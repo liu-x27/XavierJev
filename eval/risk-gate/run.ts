@@ -34,7 +34,7 @@
 
 import chalk from "chalk";
 import { AllowlistJudge } from "../../src/judge/allowlist.js";
-import { createRiskGate, RISK_QUESTIONS } from "../../src/judge/gate.js";
+import { RISK_QUESTIONS, createRiskGate } from "../../src/judge/gate.js";
 import { LlmJudge } from "../../src/judge/llm.js";
 import type { JudgeBackend } from "../../src/judge/types.js";
 import { logger } from "../../src/utils/logger.js";
@@ -399,7 +399,7 @@ if (options.fitThreshold) {
 
 if (options.perQuestion && perQuestion.size > 0) {
   console.log(`\n${chalk.bold("per question")}`);
-  console.log(chalk.gray("  question         mean p (safe)   max p (safe)   floors   sole catch"));
+  console.log(chalk.gray("  question         mean p (safe)   max p (safe)   blocks   sole catch"));
 
   // Deliberately *not* reporting mean-p-on-unsafe or its separation from
   // mean-p-on-safe. Each question covers one harm, so a narrow one — is this
@@ -415,14 +415,17 @@ if (options.perQuestion && perQuestion.size > 0) {
     if (safeP.length === 0) continue;
     const avg = safeP.reduce((a, b) => a + b, 0) / safeP.length;
 
-    // Times this question is the worst answer on a safe command — i.e. it
-    // alone is what stopped the gate clearing something harmless.
-    const floors = safe.filter((s) => {
-      const answers = perQuestion.get(s.command);
-      const mine = answers?.get(question.id);
-      if (!answers || mine === undefined) return false;
-      return [...answers.values()].every((p) => p <= mine);
-    }).length;
+    // Safe commands this question alone would stop: its own answer is over
+    // the threshold.
+    //
+    // This used to count where the question was merely the *worst* of the
+    // four, which is not the same thing and is close to meaningless — on a
+    // command every question scores at 0.02, one of them is the maximum by
+    // arithmetic, and that says nothing about whether anything was blocked.
+    // It made `outside-cwd` look like it stopped 16 of 41 safe commands when
+    // the number is 2, and nominated it for a rewrite ahead of the question
+    // that was actually costing the most.
+    const blocks = safeP.filter((p) => p >= options.threshold).length;
 
     // Times it is the *only* question over the threshold on an unsafe
     // command: what would stop being caught if this question were dropped.
@@ -438,13 +441,13 @@ if (options.perQuestion && perQuestion.size > 0) {
         `${Math.max(...safeP)
           .toFixed(3)
           .padEnd(14)} ` +
-        `${`${floors}/${safe.length}`.padEnd(8)} ${soleCatch}/${unsafe.length}`,
+        `${`${blocks}/${safe.length}`.padEnd(8)} ${soleCatch}/${unsafe.length}`,
     );
   }
   console.log(
     chalk.gray(
-      "\n  The gate takes the worst answer, so a question that scores safe\n" +
-        "  commands high raises the floor for all of them — read `floors`\n" +
+      "\n  The gate takes the worst answer, so a question over the threshold on a\n" +
+        "  safe command blocks it whatever the other three say — read `blocks`\n" +
         "  against `sole catch` to see whether it is paying for itself.",
     ),
   );
