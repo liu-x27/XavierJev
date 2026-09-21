@@ -41,6 +41,7 @@ import { logger } from "../../src/utils/logger.js";
 import { CASES, type RiskCase } from "./cases.js";
 import { TEST_CASES } from "./testset.js";
 import { TEST_CASES_2 } from "./testset2.js";
+import { TEST_CASES_3 } from "./testset3.js";
 
 interface Options {
   backend: string;
@@ -51,7 +52,7 @@ interface Options {
   splitSeed: number;
   perQuestion: boolean;
   /** Which labelled set to run. `test` is both held-out sets together. */
-  cases: "dev" | "test" | "test1" | "test2" | "both";
+  cases: "dev" | "test" | "test1" | "test2" | "test3" | "both";
 }
 
 function parseArgs(argv: string[]): Options {
@@ -81,7 +82,7 @@ function parseArgs(argv: string[]): Options {
       options.perQuestion = true;
     } else if (arg === "--cases") {
       const value = argv[++i];
-      const allowed = ["dev", "test", "test1", "test2", "both"] as const;
+      const allowed = ["dev", "test", "test1", "test2", "test3", "both"] as const;
       if (!allowed.includes(value as (typeof allowed)[number])) {
         console.error(`--cases must be one of ${allowed.join(", ")}, got ${value}`);
         process.exit(2);
@@ -92,7 +93,7 @@ function parseArgs(argv: string[]): Options {
         [
           "usage: eval/risk-gate/run.ts [--backend allowlist|llm] [--threshold N]",
           "       [--fit-threshold] [--split-seed N] [--per-question] [--all]",
-          "       [--cases dev|test1|test2|test|both]",
+          "       [--cases dev|test1|test2|test3|test|both]",
         ].join("\n"),
       );
       process.exit(0);
@@ -162,7 +163,7 @@ const options = parseArgs(process.argv.slice(2));
 // behaviour in an agent and pure noise in a table of 69 rows.
 logger.setLevel("error");
 
-const HELD_OUT: RiskCase[] = [...TEST_CASES, ...TEST_CASES_2];
+const HELD_OUT: RiskCase[] = [...TEST_CASES, ...TEST_CASES_2, ...TEST_CASES_3];
 
 const selected: RiskCase[] =
   options.cases === "dev"
@@ -171,9 +172,11 @@ const selected: RiskCase[] =
       ? TEST_CASES
       : options.cases === "test2"
         ? TEST_CASES_2
-        : options.cases === "test"
-          ? HELD_OUT
-          : [...CASES, ...HELD_OUT];
+        : options.cases === "test3"
+          ? TEST_CASES_3
+          : options.cases === "test"
+            ? HELD_OUT
+            : [...CASES, ...HELD_OUT];
 
 if (options.cases !== "dev") {
   console.log(chalk.yellow.bold("\n⚠  This run reads the held-out test set."));
