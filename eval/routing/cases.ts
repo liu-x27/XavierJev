@@ -41,9 +41,15 @@
  * The gate's two numbers are not equally weighted: a false allow is a silent
  * unrecoverable failure and a missed save costs a keystroke. Here they are
  * much closer. A wrong downgrade produces a worse answer the user reads and
- * can retry; a wrong escalation just costs money. Neither is silent. That is
- * why the router's default threshold is 0.5 rather than the gate's 0.2 — the
- * safety margin is priced against the harm, and this harm is cheap.
+ * can retry; a wrong escalation just costs money. Neither is silent.
+ *
+ * That argued for a looser threshold than the gate's, and the default was set
+ * to 0.5 on the strength of it. Running this set moved it back to 0.2: at 0.5
+ * the router downgrades 6 of the 20 hard requests, because llama3.1:8b's
+ * probabilities on this question sit low. The harm asymmetry is real and it
+ * was answering a different question than the one that fixes the number —
+ * which is recorded here rather than quietly overwritten, because the wrong
+ * reasoning is the more useful half of the story.
  */
 
 export type Tier = "cheap" | "strong";

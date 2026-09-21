@@ -30,6 +30,7 @@ import type { ModelId } from "../../src/types.js";
 import { estimateCost, formatCost } from "../../src/utils/cost.js";
 import { logger } from "../../src/utils/logger.js";
 import { ROUTING_CASES, type Tier } from "./cases.js";
+import { ROUTING_TEST_CASES } from "./testset.js";
 
 /**
  * A single representative run, used only to turn routing decisions into
@@ -48,6 +49,15 @@ const backendName = arg("backend", "llm");
 const strong = arg("strong", "claude-opus-5") as ModelId;
 const cheap = arg("cheap", "claude-haiku-4-5") as ModelId;
 const threshold = Number(arg("threshold", "0.2"));
+const which = arg("cases", "dev");
+if (which !== "dev" && which !== "test") {
+  console.error(`--cases must be dev or test, got ${which}`);
+  process.exit(2);
+}
+const CASES = which === "test" ? ROUTING_TEST_CASES : ROUTING_CASES;
+if (which === "test") {
+  console.log(chalk.yellow.bold("\n⚠  This run reads the held-out set. Log it in testset.ts."));
+}
 
 function buildBackend(name: string): JudgeBackend {
   switch (name) {
@@ -89,7 +99,7 @@ interface Scored {
 }
 
 const scored: Scored[] = [];
-for (const testCase of ROUTING_CASES) {
+for (const testCase of CASES) {
   const started = Date.now();
   const verdict = await router(testCase.prompt);
   scored.push({
@@ -116,9 +126,7 @@ console.log(
     `${chalk.cyan(cheap)} when P(needs-strong) < ${chalk.cyan(threshold)}, else ${chalk.cyan(strong)}`,
 );
 console.log(
-  chalk.gray(
-    `${ROUTING_CASES.length} requests — ${wantCheap.length} cheap, ${wantStrong.length} strong\n`,
-  ),
+  chalk.gray(`${CASES.length} requests — ${wantCheap.length} cheap, ${wantStrong.length} strong\n`),
 );
 
 const pct = (n: number, d: number) => (d === 0 ? "—" : `${((n / d) * 100).toFixed(0)}%`);
