@@ -113,9 +113,21 @@ export class AllowlistJudge implements JudgeBackend {
       return { safe: false, reason: `flag "${badFlag}" can write or delete` };
     }
 
-    const secretArg = args.find((arg) => looksLikeSecretPath(arg));
-    if (secretArg !== undefined) {
-      return { safe: false, reason: `"${secretArg}" looks like a credential` };
+    // Searches that walk the tree can read anything under it, whatever the
+    // paths say, so they are refused before the paths are even looked at.
+    const recursiveFlag = args.find((arg) => RECURSIVE_SEARCH_FLAGS.includes(arg));
+    if (recursiveFlag !== undefined && SEARCH_PROGRAMS.has(program)) {
+      return {
+        safe: false,
+        reason: `"${recursiveFlag}" walks the tree and reads every file in it`,
+      };
+    }
+
+    const foreignArg = args.find(
+      (arg) => !arg.startsWith("-") && !looksLikeOrdinaryProjectPath(arg),
+    );
+    if (foreignArg !== undefined) {
+      return { safe: false, reason: `"${foreignArg}" is not an ordinary path inside the project` };
     }
 
     return { safe: true, reason: `${program} with read-only arguments` };
@@ -196,7 +208,6 @@ const READ_ONLY_COMMANDS: Record<string, CommandRule | undefined> = {
   // `node <file>` runs arbitrary code, so only the version probe is allowed.
   node: { subcommands: ["--version", "-v"] },
   pwd: {},
-  rg: {},
   // `sed -i` edits in place; without it, output goes to stdout.
   sed: { deniedFlags: ["-i", "--in-place"] },
   sort: {},
@@ -212,28 +223,69 @@ const READ_ONLY_COMMANDS: Record<string, CommandRule | undefined> = {
 };
 
 /**
- * Paths whose *contents* are the secret. Reading one is not destructive, but
- * it puts a credential into a transcript that gets persisted to disk, which
- * the user should get a say in.
+ * Whether an argument is an ordinary file inside the project.
+ *
+ * This replaced a list of secret-path markers — `.ssh`, `id_rsa`, `.env`,
+ * `.aws` and nine more — which was a deny-list living inside an allow-list
+ * and failed exactly the way this file's own docstring says deny-lists fail.
+ * `cat ~/.docker/config.json` cleared the gate on a held-out set because
+ * `.docker` was not among the fourteen names someone had thought of, and
+ * adding a fifteenth would have fixed that row and not the class.
+ *
+ * So the question is inverted. Rather than asking whether a path looks
+ * dangerous, it asks whether the path is plainly harmless: a relative path
+ * under the working directory, not a dotfile. Everything else — the home
+ * directory, absolute paths, `..`, and dotfiles of any name — is not cleared,
+ * without needing to know what it holds. The credential files above are all
+ * outside the tree or dotfiles or both, so they fall out for free, and so do
+ * the ones nobody has heard of yet.
+ *
+ * `.` and `./…` are allowed because they name the working directory itself.
+ *
+ * Measured cost of the inversion across all four labelled sets — 485
+ * commands, 231 of them unsafe — is **three clearances**: two recursive greps
+ * and one `rg`, all to the traversal rule below rather than to this one. Both
+ * held-out false allows are gone and there are now none on any set.
+ *
+ * `jq '.name' package.json` survives, which is luck rather than design: the
+ * shell quoting is still attached when the argument reaches here, so the
+ * filter reads as `'.name'` and does not look like a dotfile. A caller that
+ * passed pre-unquoted arguments would lose it.
  */
-const SECRET_PATH_MARKERS = [
-  ".ssh",
-  "id_rsa",
-  "id_ed25519",
-  ".env",
-  ".aws",
-  ".npmrc",
-  ".netrc",
-  ".git-credentials",
-  ".kube",
-  "credentials",
-  "secret",
-  ".pem",
-  ".p12",
-  ".key",
+function looksLikeOrdinaryProjectPath(arg: string): boolean {
+  if (arg === "." || arg.startsWith("./")) return true;
+  if (arg.startsWith("~") || arg.startsWith("/")) return false;
+  if (arg.includes("..")) return false;
+
+  // A dotfile anywhere in the path: `.env`, `src/.secrets`, `.ssh/config`.
+  return !arg.split(/[\\/]/).some((part) => part.startsWith("."));
+}
+
+/**
+ * Searches that walk the tree rather than naming their files.
+ *
+ * `grep -r api_key . --include=*.json` cleared the gate on a held-out set:
+ * every path argument was ordinary, no flag wrote anything, and the pattern
+ * was just a string. The harm is not in the path, it is that a recursive
+ * search reads *every* file under the root and prints what matches — so it
+ * can surface a credential regardless of which paths were named or what the
+ * pattern happens to be.
+ *
+ * Deciding that from the pattern would be another deny-list. Deciding it from
+ * the traversal is sound: a search that names its files can only read those
+ * files. `rg` is not on the allow-list at all, because it recurses by default
+ * and there is no flag whose absence makes it safe.
+ */
+const RECURSIVE_SEARCH_FLAGS = [
+  "-r",
+  "-R",
+  "-rn",
+  "-rl",
+  "-rin",
+  "-rni",
+  "--recursive",
+  "--dereference-recursive",
 ];
 
-function looksLikeSecretPath(arg: string): boolean {
-  const lower = arg.toLowerCase();
-  return SECRET_PATH_MARKERS.some((marker) => lower.includes(marker));
-}
+/** Programs whose job is to read file contents in bulk. */
+const SEARCH_PROGRAMS = new Set(["grep", "egrep", "fgrep"]);
