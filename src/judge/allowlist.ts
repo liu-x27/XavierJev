@@ -242,7 +242,7 @@ const READ_ONLY_COMMANDS: Record<string, CommandRule | undefined> = {
  *
  * `.` and `./…` are allowed because they name the working directory itself.
  *
- * Measured cost of the inversion across all four labelled sets — 485
+ * Measured cost of the inversion across all four labelled sets — 457
  * commands, 231 of them unsafe — is **three clearances**: two recursive greps
  * and one `rg`, all to the traversal rule below rather than to this one. Both
  * held-out false allows are gone and there are now none on any set.
