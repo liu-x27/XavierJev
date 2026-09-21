@@ -37,6 +37,7 @@ import { LlmJudge } from "../../src/judge/llm.js";
 import type { JudgeBackend } from "../../src/judge/types.js";
 import { logger } from "../../src/utils/logger.js";
 import { CASES, type RiskCase } from "./cases.js";
+import { TEST_CASES } from "./testset.js";
 
 interface Options {
   backend: string;
@@ -46,6 +47,8 @@ interface Options {
   fitThreshold: boolean;
   splitSeed: number;
   perQuestion: boolean;
+  /** Which labelled set to run: the dev set, the held-out one, or both. */
+  cases: "dev" | "test" | "both";
 }
 
 function parseArgs(argv: string[]): Options {
@@ -56,6 +59,7 @@ function parseArgs(argv: string[]): Options {
     fitThreshold: false,
     splitSeed: 20260921,
     perQuestion: false,
+    cases: "dev",
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -72,11 +76,19 @@ function parseArgs(argv: string[]): Options {
       options.splitSeed = Number(argv[++i] ?? options.splitSeed);
     } else if (arg === "--per-question") {
       options.perQuestion = true;
+    } else if (arg === "--cases") {
+      const value = argv[++i];
+      if (value !== "dev" && value !== "test" && value !== "both") {
+        console.error(`--cases must be dev, test or both, got ${value}`);
+        process.exit(2);
+      }
+      options.cases = value;
     } else if (arg === "--help" || arg === "-h") {
       console.log(
         [
           "usage: eval/risk-gate/run.ts [--backend allowlist|llm] [--threshold N]",
           "       [--fit-threshold] [--split-seed N] [--per-question] [--all]",
+          "       [--cases dev|test|both]",
         ].join("\n"),
       );
       process.exit(0);
@@ -89,6 +101,19 @@ function parseArgs(argv: string[]): Options {
   }
 
   return options;
+}
+
+/**
+ * A command's structural skeleton: program name, metacharacters present, and
+ * the set of flags. Two commands with different arguments but the same
+ * skeleton pose the same question to a judge.
+ */
+function skeleton(command: string): string {
+  const tokens = command.trim().split(/\s+/);
+  const argv0 = tokens[0] ?? "";
+  const metas = [...new Set([...command].filter((c) => ";|&><`$".includes(c)))].sort().join("");
+  const flags = [...new Set(tokens.slice(1).filter((t) => t.startsWith("-")))].sort().join(",");
+  return `${argv0}|${metas}|${flags}`;
 }
 
 /** Seeded PRNG, so a reported split can be reproduced from its seed alone. */
@@ -129,6 +154,38 @@ const options = parseArgs(process.argv.slice(2));
 // behaviour in an agent and pure noise in a table of 69 rows.
 logger.setLevel("error");
 
+const selected: RiskCase[] =
+  options.cases === "dev"
+    ? CASES
+    : options.cases === "test"
+      ? TEST_CASES
+      : [...CASES, ...TEST_CASES];
+
+if (options.cases !== "dev") {
+  console.log(chalk.yellow.bold("\n⚠  This run reads the held-out test set."));
+  console.log(
+    chalk.yellow(
+      "   Its only value is that its labels were written before the design was\n" +
+        "   fixed. Tuning anything on what comes back spends that, permanently.\n" +
+        "   Log the run in testset.ts.",
+    ),
+  );
+
+  // How much of the test set is structurally new, by the same skeleton measure
+  // the distillation side uses: argv[0] plus the metacharacters and flags
+  // present. A test set that only varies arguments is a paraphrase of the dev
+  // set, and would report a number the dev set already gave.
+  const devSkeletons = new Set(CASES.map((c) => skeleton(c.command)));
+  const overlap = TEST_CASES.filter((c) => devSkeletons.has(skeleton(c.command))).length;
+  const exact = new Set(CASES.map((c) => c.command));
+  console.log(
+    chalk.gray(
+      `\n   test set vs dev set: ${TEST_CASES.filter((c) => exact.has(c.command)).length} identical commands, ` +
+        `${overlap}/${TEST_CASES.length} sharing a structural skeleton`,
+    ),
+  );
+}
+
 const backend = buildBackend(options.backend);
 
 // Ask the endpoint what it can do before reading anything into its answers.
@@ -157,7 +214,7 @@ const gate = createRiskGate({
 });
 
 const scored: Scored[] = [];
-for (const testCase of CASES) {
+for (const testCase of selected) {
   const started = Date.now();
   const verdict = await gate({
     toolName: "Bash",
@@ -180,7 +237,7 @@ for (const testCase of CASES) {
 // wording problem, not a threshold problem. Opt-in: it doubles the calls.
 const perQuestion = new Map<string, Map<string, number>>();
 if (options.perQuestion) {
-  for (const testCase of CASES) {
+  for (const testCase of selected) {
     try {
       const answers = await backend.noul({ tool: "Bash", command: testCase.command }, [
         ...RISK_QUESTIONS,
@@ -209,7 +266,9 @@ console.log(
   `\n${chalk.bold("risk gate")} · backend ${chalk.cyan(backend.name)} · ` +
     `auto-allow when P(destructive) < ${chalk.cyan(options.threshold)}`,
 );
-console.log(chalk.gray(`${CASES.length} cases — ${safe.length} safe, ${unsafe.length} unsafe\n`));
+console.log(
+  chalk.gray(`${selected.length} cases — ${safe.length} safe, ${unsafe.length} unsafe\n`),
+);
 
 const savedLine = `${promptsSaved.length}/${safe.length} safe commands cleared without asking (${pct(promptsSaved.length, safe.length)})`;
 console.log(`  ${chalk.green("prompts saved")}   ${savedLine}`);
