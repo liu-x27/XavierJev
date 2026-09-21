@@ -26,18 +26,32 @@ export interface LlmJudgeOptions {
   model?: string;
   /** How many top tokens to ask for. Default 5. */
   topLogprobs?: number;
+  /**
+   * Accept a bare yes/no when the endpoint returns no logprobs. Default false.
+   *
+   * Off by default because a hard label is not a probability and the gate
+   * cannot tell the difference. This used to be handled by mapping "no" to
+   * 0.15 — below the old default threshold of 0.05, so a degraded judge
+   * auto-allowed nothing. The default threshold is now 0.2, which that number
+   * clears, so the same fallback would have started waving commands through on
+   * the strength of one token sampled at temperature 0. Throwing instead makes
+   * the gate fail closed and say why.
+   *
+   * Turn it on to *measure* a hard-label judge, which is what
+   * `eval/risk-gate` does. Do not turn it on to run one.
+   */
+  allowHardLabels?: boolean;
 }
 
 /**
- * What a yes/no gets mapped to when the endpoint will not return logprobs.
+ * What a yes/no maps to when `allowHardLabels` is on and the endpoint will
+ * not return logprobs.
  *
- * Deliberately inside (0.05, 0.95): with the gate's default `autoAllowBelow`
- * of 0.05, a degraded backend auto-allows *nothing* and every call falls
- * through to the user. A hard 0 would instead mean "one token of output, from
- * one sample, at temperature 0, is enough to run this without asking" — which
- * is not a thing this backend is in a position to promise. Raising
- * `autoAllowBelow` past this floor is how a caller says they accept that
- * trade; it should not happen by accident because a provider ignored a flag.
+ * These are not calibrated and are not claimed to be: they exist so that a
+ * hard-label judge can be *measured* against a threshold, which is what
+ * `eval/risk-gate --threshold 0.5` does. They are reachable only behind an
+ * explicit opt-in, because "one token of output, from one sample, at
+ * temperature 0" is not evidence enough to run something without asking.
  */
 const DEGRADED_NO = 0.15;
 const DEGRADED_YES = 0.85;
@@ -65,6 +79,7 @@ export class LlmJudge implements JudgeBackend {
   private readonly client: OpenAI;
   private readonly model: string;
   private readonly topLogprobs: number;
+  private readonly allowHardLabels: boolean;
   /** Set once the endpoint has proven it will not return logprobs. */
   private logprobsUnsupported = false;
 
@@ -79,6 +94,7 @@ export class LlmJudge implements JudgeBackend {
     const baseURL = options.baseURL ?? process.env.AGENT_JUDGE_BASE_URL;
     this.model = options.model ?? process.env.AGENT_JUDGE_MODEL ?? "gpt-4o-mini";
     this.topLogprobs = options.topLogprobs ?? 5;
+    this.allowHardLabels = options.allowHardLabels ?? false;
     this.name = `llm:${this.model}`;
     this.client = new OpenAI({ apiKey, ...(baseURL ? { baseURL } : {}) });
   }
@@ -128,9 +144,17 @@ export class LlmJudge implements JudgeBackend {
     }
 
     const first = text.slice(0, 1);
-    if (YES_TOKENS.has(first)) return DEGRADED_YES;
-    if (NO_TOKENS.has(first)) return DEGRADED_NO;
-    throw new Error(`judge answered ${JSON.stringify(text.slice(0, 20))}, expected Y or N`);
+    const isYes = YES_TOKENS.has(first);
+    const isNo = NO_TOKENS.has(first);
+    if (!isYes && !isNo) {
+      throw new Error(`judge answered ${JSON.stringify(text.slice(0, 20))}, expected Y or N`);
+    }
+    if (!this.allowHardLabels) {
+      throw new Error(
+        `${this.model} answered but returned no logprobs, so there is no probability to threshold — pass allowHardLabels to measure it anyway`,
+      );
+    }
+    return isYes ? DEGRADED_YES : DEGRADED_NO;
   }
 
   /**
@@ -207,8 +231,9 @@ export class LlmJudge implements JudgeBackend {
     if (this.logprobsUnsupported) return;
     this.logprobsUnsupported = true;
     logger.warn(
-      `Judge ${this.name} returned no logprobs — falling back to hard yes/no at ` +
-        `P=${DEGRADED_NO}/${DEGRADED_YES}, which auto-allows nothing at the default threshold.`,
+      this.allowHardLabels
+        ? `Judge ${this.name} returned no logprobs — using hard yes/no at P=${DEGRADED_NO}/${DEGRADED_YES}, which are not calibrated.`
+        : `Judge ${this.name} returned no logprobs. Every call will fail closed to asking the user.`,
     );
   }
 }

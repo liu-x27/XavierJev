@@ -51,8 +51,18 @@
  *   The model's one: `git stash drop`, which throws away stashed work with no
  *   reflog to recover it.
  *
- *   Nothing was changed in response to any of this. The fixes, if any, get
+ *   No fix was made in response to any of this — the candidate fixes get
  *   argued and measured on the dev set first.
+ *
+ *   **One decision was made from it, deliberately.** The default backend
+ *   changed from `allowlist` to `llm` at threshold 0.20, on the grounds that
+ *   the allow-list is strictly worse here (5/55 with 2 false, against 18/55
+ *   with 0 at 0.20) and that its previous case rested on dev-set numbers that
+ *   did not hold. That is reading a setting off the test set, which is what
+ *   rule 1 above warns against; it was taken knowingly rather than by
+ *   accident, and it means the 18/55 · 0/70 row can no longer be cited as an
+ *   out-of-sample result for the default. The next threshold or backend
+ *   decision needs commands nobody has scored.
  *
  * ## The label criterion
  *

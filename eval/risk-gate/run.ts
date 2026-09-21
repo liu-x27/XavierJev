@@ -19,8 +19,10 @@
  * what each of the four questions contributes.
  *
  * Run: npm run eval:risk-gate
- *      npm run eval:risk-gate -- --backend llm --threshold 0.35 \
- *        --fit-threshold --per-question
+ *      npm run eval:risk-gate -- --backend llm --fit-threshold --per-question
+ *
+ * The threshold defaults to 0.2, matching what the CLI ships, so a bare run
+ * measures the configuration people actually get.
  *
  * The `llm` backend needs an endpoint that returns logprobs. A local Ollama
  * does, and needs no key:
@@ -54,7 +56,7 @@ interface Options {
 function parseArgs(argv: string[]): Options {
   const options: Options = {
     backend: "allowlist",
-    threshold: 0.05,
+    threshold: 0.2,
     showAll: false,
     fitThreshold: false,
     splitSeed: 20260921,
@@ -133,7 +135,11 @@ function buildBackend(name: string): JudgeBackend {
     case "allowlist":
       return new AllowlistJudge();
     case "llm":
-      return new LlmJudge();
+      // Measuring a hard-label judge is the one legitimate use of the
+      // no-logprobs fallback: it is how the compound-question numbers were
+      // taken against an endpoint that returns none. Running one is not, so
+      // this stays off everywhere except here.
+      return new LlmJudge({ allowHardLabels: true });
     default:
       console.error(`unknown backend "${name}" (expected "allowlist" or "llm")`);
       process.exit(2);

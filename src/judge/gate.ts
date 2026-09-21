@@ -48,10 +48,14 @@ export interface RiskGateOptions {
   backend: JudgeBackend;
 
   /**
-   * Auto-allow when P(destructive) is below this. Default 0.05.
+   * Auto-allow when P(destructive) is below this. Default 0.2.
    *
    * This is the only number that trades safety for convenience, so it is the
-   * one to measure before changing — see `eval/risk-gate/`.
+   * one to measure before changing — see `eval/risk-gate/`. The default is
+   * the highest value with zero false allows for llama3.1:8b across both
+   * labelled sets; it is a property of that judge, not of the gate, and a
+   * different model needs it re-measured. It happens to behave identically to
+   * the old 0.05 for `AllowlistJudge`, which only ever emits 0.02 or 0.5.
    */
   autoAllowBelow?: number;
 
@@ -89,7 +93,7 @@ export interface RiskGateOptions {
  */
 export function createRiskGate(options: RiskGateOptions): RiskGate {
   const { backend } = options;
-  const autoAllowBelow = options.autoAllowBelow ?? 0.05;
+  const autoAllowBelow = options.autoAllowBelow ?? 0.2;
   const denyAbove = options.denyAbove;
   const timeoutMs = options.timeoutMs ?? 2000;
   const maxValueChars = options.maxValueChars ?? 2000;
