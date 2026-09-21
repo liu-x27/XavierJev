@@ -40,6 +40,7 @@ import type { JudgeBackend } from "../../src/judge/types.js";
 import { logger } from "../../src/utils/logger.js";
 import { CASES, type RiskCase } from "./cases.js";
 import { TEST_CASES } from "./testset.js";
+import { TEST_CASES_2 } from "./testset2.js";
 
 interface Options {
   backend: string;
@@ -49,8 +50,8 @@ interface Options {
   fitThreshold: boolean;
   splitSeed: number;
   perQuestion: boolean;
-  /** Which labelled set to run: the dev set, the held-out one, or both. */
-  cases: "dev" | "test" | "both";
+  /** Which labelled set to run. `test` is both held-out sets together. */
+  cases: "dev" | "test" | "test1" | "test2" | "both";
 }
 
 function parseArgs(argv: string[]): Options {
@@ -80,17 +81,18 @@ function parseArgs(argv: string[]): Options {
       options.perQuestion = true;
     } else if (arg === "--cases") {
       const value = argv[++i];
-      if (value !== "dev" && value !== "test" && value !== "both") {
-        console.error(`--cases must be dev, test or both, got ${value}`);
+      const allowed = ["dev", "test", "test1", "test2", "both"] as const;
+      if (!allowed.includes(value as (typeof allowed)[number])) {
+        console.error(`--cases must be one of ${allowed.join(", ")}, got ${value}`);
         process.exit(2);
       }
-      options.cases = value;
+      options.cases = value as Options["cases"];
     } else if (arg === "--help" || arg === "-h") {
       console.log(
         [
           "usage: eval/risk-gate/run.ts [--backend allowlist|llm] [--threshold N]",
           "       [--fit-threshold] [--split-seed N] [--per-question] [--all]",
-          "       [--cases dev|test|both]",
+          "       [--cases dev|test1|test2|test|both]",
         ].join("\n"),
       );
       process.exit(0);
@@ -160,12 +162,18 @@ const options = parseArgs(process.argv.slice(2));
 // behaviour in an agent and pure noise in a table of 69 rows.
 logger.setLevel("error");
 
+const HELD_OUT: RiskCase[] = [...TEST_CASES, ...TEST_CASES_2];
+
 const selected: RiskCase[] =
   options.cases === "dev"
     ? CASES
-    : options.cases === "test"
+    : options.cases === "test1"
       ? TEST_CASES
-      : [...CASES, ...TEST_CASES];
+      : options.cases === "test2"
+        ? TEST_CASES_2
+        : options.cases === "test"
+          ? HELD_OUT
+          : [...CASES, ...HELD_OUT];
 
 if (options.cases !== "dev") {
   console.log(chalk.yellow.bold("\n⚠  This run reads the held-out test set."));
@@ -173,7 +181,7 @@ if (options.cases !== "dev") {
     chalk.yellow(
       "   Its only value is that its labels were written before the design was\n" +
         "   fixed. Tuning anything on what comes back spends that, permanently.\n" +
-        "   Log the run in testset.ts.",
+        "   Log the run in the testset file.",
     ),
   );
 
@@ -182,12 +190,12 @@ if (options.cases !== "dev") {
   // present. A test set that only varies arguments is a paraphrase of the dev
   // set, and would report a number the dev set already gave.
   const devSkeletons = new Set(CASES.map((c) => skeleton(c.command)));
-  const overlap = TEST_CASES.filter((c) => devSkeletons.has(skeleton(c.command))).length;
   const exact = new Set(CASES.map((c) => c.command));
+  const overlap = selected.filter((c) => devSkeletons.has(skeleton(c.command))).length;
   console.log(
     chalk.gray(
-      `\n   test set vs dev set: ${TEST_CASES.filter((c) => exact.has(c.command)).length} identical commands, ` +
-        `${overlap}/${TEST_CASES.length} sharing a structural skeleton`,
+      `\n   vs dev set: ${selected.filter((c) => exact.has(c.command)).length} identical commands, ` +
+        `${overlap}/${selected.length} sharing a structural skeleton`,
     ),
   );
 }
