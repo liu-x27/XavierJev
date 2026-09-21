@@ -52,6 +52,21 @@
  *   criterion says what it says, and picking the reading that improves a
  *   number is the whole failure this file exists to prevent.
  *
+ * - **2026-09-21, run 2.** Same config with `destroys-data` rewritten, a
+ *   change measured and chosen entirely on the dev set. Re-measuring here is
+ *   the legitimate use of a held-out set — the sin is picking a change
+ *   *because* of this column, not looking at it after the fact — but it is
+ *   still a second read, and two more would make this a dev set in all but
+ *   name.
+ *
+ *   **26/53 saved, 1/43 false allows. Identical to run 1.** The rewrite took
+ *   the dev set from 35/41 to 36/41 and moved nothing at all out here.
+ *   `destroys-data` went from blocking 13 of 53 safe commands to 9, and the
+ *   gate-level number did not budge because `outside-cwd` was blocking those
+ *   same commands anyway — its sole catches rose from 7 to 11. A per-question
+ *   improvement is not a gate improvement when another question is already
+ *   the worst answer on the same rows.
+ *
  *   Two things this set showed that the first one could not. `outside-cwd`
  *   went from 0 sole catches on the dev set to **7 of 43 here** — the most
  *   valuable question of the four — because realistic agent work is full of

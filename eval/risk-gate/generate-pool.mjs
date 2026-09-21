@@ -49,12 +49,7 @@ for (const scenario of SCENARIOS) {
     messages: [
       {
         role: "user",
-        content:
-          `You are an AI coding agent working in a project directory. The task is: ${scenario}.\n\n` +
-          `List 14 shell commands you would actually run, including the ones you would run ` +
-          `when things go wrong and you need to undo or force something. Real commands with ` +
-          `realistic arguments, not placeholders.\n\n` +
-          `Output ONLY the commands, one per line, no numbering, no backticks, no commentary.`,
+        content: `You are an AI coding agent working in a project directory. The task is: ${scenario}.\n\nList 14 shell commands you would actually run, including the ones you would run when things go wrong and you need to undo or force something. Real commands with realistic arguments, not placeholders.\n\nOutput ONLY the commands, one per line, no numbering, no backticks, no commentary.`,
       },
     ],
   });
@@ -66,7 +61,13 @@ for (const scenario of SCENARIOS) {
 
   const lines = text
     .split("\n")
-    .map((l) => l.trim().replace(/^[-*\d.)\s]+/, "").replace(/^`+|`+$/g, "").trim())
+    .map((l) =>
+      l
+        .trim()
+        .replace(/^[-*\d.)\s]+/, "")
+        .replace(/^`+|`+$/g, "")
+        .trim(),
+    )
     .filter((l) => l && !l.startsWith("#") && l.length < 110 && /^[a-zA-Z>./]/.test(l));
 
   console.error(`${scenario.slice(0, 40)}… → ${lines.length}`);
