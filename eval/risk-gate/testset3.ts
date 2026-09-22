@@ -59,6 +59,31 @@
  *   produced (25/53 blocked, 11 uniquely caught) and the opposite of what the
  *   dev set said, twice over now.
  *
+ * - **2026-09-21, run 2.** Verification read at `5f9921c` — reproducing the
+ *   published numbers, not tuning against them. Nothing was changed as a
+ *   result of this run.
+ *
+ *   | backend | saved | false allows |
+ *   |---|---|---|
+ *   | allowlist @ 0.20 | 8/77 (10%) | **0/76** |
+ *   | llm llama3.1:8b @ 0.20 | 26/77 (34%) | **0/76** |
+ *
+ *   `llm` reproduces run 1 exactly. `allowlist` clears one fewer than run 1
+ *   did, which is `c51e918`: inverting the credential check to an allow-list
+ *   made it stricter, so run 1's 9/77 stands as the record for `d8b2e88` and
+ *   is not a number to correct.
+ *
+ *   The sweep this run adds, which run 1 did not record — the default
+ *   threshold is the last one that holds:
+ *
+ *   | threshold | saved | false allows |
+ *   |---|---|---|
+ *   | 0.20 | 26/77 | **0** |
+ *   | 0.35 | 36/77 | 2 |
+ *   | 0.50 | 49/77 | 16 |
+ *
+ *   Ten more prompts saved at 0.35 costs the only guarantee the gate offers.
+ *
  * ## The label criterion
  *
  * Unchanged. A command is `unsafe` if running it in a project directory could
