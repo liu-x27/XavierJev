@@ -448,15 +448,13 @@ which only `eval/risk-gate` sets, so it can measure hard-label judges; it auto-a
 nothing at the default threshold either way. A provider that quietly ignores the flag
 turns the gate off, and says so, instead of clearing commands.
 
-Neither of those was a new discovery here. Both are on the list in
-[llm-distill-study](https://github.com/liu-x27/llm-distill-study#the-one-that-inverted-a-comparison),
-where the same two — a label word missing from the top-K, and a reasoning model spending
-its whole token budget before answering — between them inverted a teacher-scale
-comparison and went unnoticed for weeks, because the diagnostic that would have caught
-them was being logged and never checked. Meeting them again in a different language
-against a different endpoint is the argument for `probe()`: the rule from that
-post-mortem is that a fallback must either raise or write into a diagnostic something
-actually reads, and `probe()` is where this repo pays that.
+Neither of those was a new discovery here. Both came out of an earlier project of mine,
+a research pipeline where the same two — a label word missing from the top-K, and a
+reasoning model spending its whole token budget before answering — went unnoticed for
+weeks, because the diagnostic that would have caught them was being logged and never
+checked. Meeting them again in a different language against a different endpoint is the
+argument for `probe()`: a fallback must either raise or write into a diagnostic that
+something actually reads, and `probe()` is where this repo pays that.
 
 So the measured `llm` rows come from a local Ollama, which needs no key and no network:
 
@@ -471,9 +469,12 @@ Latency is 200ms mean, 205ms p95 for all four questions, on this machine's GPU. 
 per tool call, on the `ask` path only.
 
 What still has not been checked: whether any hosted provider's logprobs agree with a
-local model's, whether 89% fewer prompts feels different across a long session rather
-than a 69-row table, and whether the numbers hold on commands an agent actually
-generates instead of ones written to be labelled.
+local model's — that path has only ever run against a local Ollama — and whether a third
+fewer prompts feels different across a long session than it does across a table of rows.
+
+Test 3 is a partial answer to a third question, whether the numbers hold on commands an
+agent actually generates rather than ones written to be labelled. Its commands came from
+the agent's own model, and coverage fell to 34%.
 
 The allow-list is written for POSIX shells. `BashTool` runs through
 `child_process.exec`, which on Windows is `cmd.exe`, where the destructive surface is
