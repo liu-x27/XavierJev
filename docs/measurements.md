@@ -30,7 +30,7 @@ Ordered by topic, which is not the order any of it happened in.
 `npm run eval:risk-gate` puts hand-labelled commands through the gate and reports two
 numbers. Only one of them is allowed to move.
 
-There are three sets. `cases.ts` (83) is the dev set — the question wording, the
+There are four sets. `cases.ts` (83) is the dev set — the question wording, the
 threshold and the model were all chosen by looking at it. `testset.ts` (125) and
 `testset2.ts` (96) are held out, labelled before anything was shown to a judge, and each
 run once.
@@ -178,9 +178,10 @@ nothing. `--gate allowlist` is still there for a machine that has neither.
 
 The allow-list itself is unchanged and still an allow-list rather than a deny-list on
 purpose: a deny-list's failure mode is missing the destructive command you did not think
-of, which is the exact failure the gate exists to prevent. Its two false allows come
-from the one place it does keep a deny-list — the secret-path markers — which is the
-same lesson arriving by the same route.
+of, which is the exact failure the gate exists to prevent. Its two false allows came
+from the one place it still kept a deny-list — the secret-path markers — which is the
+same lesson arriving by the same route. That deny-list is the one the inversion above
+replaced, so those two are gone; the rows in the table are from after that change.
 
 Making `llm` the default forced two changes that had nothing to do with preference:
 
@@ -241,10 +242,16 @@ third of the safe commands, and still three and a half times what the allow-list
 on the same commands, with two fewer false allows. That reading predates the
 `exfiltrates` rewrite.
 
-**0.20 is not being adopted as the new default.** It was read off the test set, and
-changing the setting because of that number is precisely how the test set stops being
-one. The next threshold decision gets made on the dev set or on commands nobody has
-scored yet.
+**0.20 was not adopted as the default at this point.** It had been read off the test
+set, and changing the setting because of that number is precisely how a test set stops
+being one. The next threshold decision was to be made on the dev set or on commands
+nobody had scored yet.
+
+It *is* the default now — see the table at the top. What changed was not the evidence
+but who was choosing: the switch was made as an explicit call, with the cost of having
+spent some of the test set stated rather than hidden. Recording the refusal and the
+later reversal separately is the point; collapsing them would make the decision look
+cleaner than it was.
 
 ## Which question is doing the work
 
@@ -402,12 +409,6 @@ Two pieces of scaffolding this needed, both worth keeping:
   `ping`, `dig`, `wget --spider`, `npm view` — specifically so a wording cannot be tuned
   into "does this command mention the network". None duplicates a `testset.ts` command.
 
-There is no mean-probability-on-unsafe column on purpose. Each question covers one harm,
-so a narrow one is right to answer ~0 for `rm -rf /`, and averaging over all 34 unsafe
-cases turns that correctness into a low score — the first version of this table did
-exactly that and made `reveals-secret` look broken. The honest version needs a label per
-harm, which `cases.ts` does not have.
-
 ## What is not tested
 
 **`cases.ts` is a dev set, and `testset.ts` has been spent once.** The question split,
@@ -441,9 +442,11 @@ Two failure modes there, both silent. An endpoint can accept `logprobs: true`, r
 a reasoning model spends its first token on `<think>`, so with `max_tokens: 1` the
 answer is never generated at all; `qwen3:4b` returns logprobs where no label word
 appears in the top 5. Neither raises. That is why `LlmJudge.probe()` asks a control
-question and reports what the endpoint actually did, and why the no-logprobs fallback is
-a hard yes/no at P=0.15/0.85 — which auto-allows nothing at the default threshold, so a
-provider that quietly ignores the flag turns the gate off instead of making it guess.
+question and reports what the endpoint actually did, and why the default on no logprobs is to
+throw rather than to guess. The hard yes/no at P=0.15/0.85 is behind `allowHardLabels`,
+which only `eval/risk-gate` sets, so it can measure hard-label judges; it auto-allows
+nothing at the default threshold either way. A provider that quietly ignores the flag
+turns the gate off, and says so, instead of clearing commands.
 
 Neither of those was a new discovery here. Both are on the list in
 [llm-distill-study](https://github.com/liu-x27/llm-distill-study#the-one-that-inverted-a-comparison),
@@ -528,7 +531,9 @@ follows from it.
 
 **Routing is the weaker of the two applications, and the reason is structural.** A shell
 command carries its hazard on its face: `rm -rf /` means the same thing in every
-repository, which is why the gate reaches zero false allows on 326 held-out commands. The
+repository, which is why the allow-list reaches zero false allows across all 374
+held-out commands, and the model reaches zero on test 3's 153 — with the one miss on
+test 2 that the table above prints rather than rounds away. The
 difficulty of "optimize the database query performance" depends entirely on a codebase
 the judge is never shown. Same interface, same discipline, and a question a one-line
 state cannot answer — which is a limit of what was asked, not of the idea.
