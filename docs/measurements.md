@@ -445,6 +445,16 @@ question and reports what the endpoint actually did, and why the no-logprobs fal
 a hard yes/no at P=0.15/0.85 — which auto-allows nothing at the default threshold, so a
 provider that quietly ignores the flag turns the gate off instead of making it guess.
 
+Neither of those was a new discovery here. Both are on the list in
+[llm-distill-study](https://github.com/liu-x27/llm-distill-study#the-one-that-inverted-a-comparison),
+where the same two — a label word missing from the top-K, and a reasoning model spending
+its whole token budget before answering — between them inverted a teacher-scale
+comparison and went unnoticed for weeks, because the diagnostic that would have caught
+them was being logged and never checked. Meeting them again in a different language
+against a different endpoint is the argument for `probe()`: the rule from that
+post-mortem is that a fallback must either raise or write into a diagnostic something
+actually reads, and `probe()` is where this repo pays that.
+
 So the measured `llm` rows come from a local Ollama, which needs no key and no network:
 
 ```bash
