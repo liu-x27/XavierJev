@@ -1,5 +1,6 @@
 /**
- * Record the snake arena playing live, as docs/snake-arena.gif.
+ * Record the arena playing live, as docs/snake-arena.gif (or, with
+ * CAPTURE_GAME=flappy, docs/flappy-arena.gif).
  *
  * Same idea as capture-screenshots.mjs: drive the real UI against a real
  * judge and record what it does. The GIF plays at the rate the frames were
@@ -20,8 +21,10 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-const URL = "http://localhost:5174/#arena";
-const OUT = "D:/CODE/agent-app/docs/snake-arena.gif";
+// CAPTURE_GAME=flappy records the Flappy tab instead, as docs/flappy-arena.gif.
+const GAME = process.env.CAPTURE_GAME === "flappy" ? "flappy" : "snake";
+const URL = `http://localhost:5174/${GAME === "flappy" ? "#arena/flappy" : "#arena"}`;
+const OUT = `D:/CODE/agent-app/docs/${GAME}-arena.gif`;
 const WARMUP_MS = 4000; // let the latency numbers fill in first
 const RECORD_MS = 8000;
 const WIDTH = 920; // of the GIF, in pixels
