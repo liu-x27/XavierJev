@@ -8,6 +8,14 @@ export {
 export { LlmJudge, type JudgeCapability, type LlmJudgeOptions } from "./llm.js";
 export { createModelRouter, ROUTING_QUESTION, type ModelRouterOptions } from "./router.js";
 export {
+  anyStopJudge,
+  createRepeatStopJudge,
+  createStopJudge,
+  type RepeatStopOptions,
+  STOP_QUESTION,
+  type StopJudgeOptions,
+} from "./stop.js";
+export {
   createRetryJudge,
   patternRetryJudge,
   RETRY_QUESTION,
