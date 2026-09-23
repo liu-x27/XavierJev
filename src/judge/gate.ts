@@ -171,26 +171,29 @@ export function createRiskGate(options: RiskGateOptions): RiskGate {
 
   return async (request: PermissionRequest): Promise<GateVerdict> => {
     const state = buildState(request, maxValueChars);
+    const started = Date.now();
 
-    let worst: { id: string; probability: number };
+    let answers: { id: string; probability: number }[];
     try {
-      worst = await withTimeout(
-        backend.noul(state, [...questions]).then((answers) => worstAnswer(answers, questions)),
+      answers = await withTimeout(
+        backend.noul(state, [...questions]).then((raw) => validAnswers(raw, questions)),
         timeoutMs,
       );
     } catch (err) {
       const reason = `${backend.name} judge unavailable: ${err instanceof Error ? err.message : String(err)}`;
       logger.warn(`Risk gate falling through to the user — ${reason}`);
-      return { action: "ask", probability: undefined, reason };
+      return { action: "ask", probability: undefined, reason, latencyMs: Date.now() - started, threshold: autoAllowBelow };
     }
 
-    const { id, probability } = worst;
+    const { id, probability } = answers.reduce((a, b) => (b.probability > a.probability ? b : a));
+    const measured = { answers, latencyMs: Date.now() - started, threshold: autoAllowBelow };
 
     if (probability < autoAllowBelow) {
       return {
         action: "allow",
         probability,
         reason: `worst P=${probability.toFixed(3)} (${id}) < ${autoAllowBelow}`,
+        ...measured,
       };
     }
 
@@ -199,6 +202,7 @@ export function createRiskGate(options: RiskGateOptions): RiskGate {
         action: "deny",
         probability,
         reason: `P(${id})=${probability.toFixed(3)} > ${denyAbove}`,
+        ...measured,
       };
     }
 
@@ -206,6 +210,7 @@ export function createRiskGate(options: RiskGateOptions): RiskGate {
       action: "ask",
       probability,
       reason: `P(${id})=${probability.toFixed(3)} is not below ${autoAllowBelow}`,
+      ...measured,
     };
   };
 }
@@ -244,16 +249,17 @@ function buildState(request: PermissionRequest, maxValueChars: number): JudgeSta
  * backend that silently stops answering "reveals-secret" would otherwise keep
  * clearing calls on the strength of the three questions it still answers.
  */
-function worstAnswer(
+/**
+ * One valid answer per question, in question order — or a throw, which the
+ * gate turns into "ask". A missing answer or a probability outside [0, 1] is
+ * a backend failure, never a quiet "no".
+ */
+function validAnswers(
   answers: readonly { id: string; probability: number }[],
   questions: readonly NoulQuestion[],
-): {
-  id: string;
-  probability: number;
-} {
-  let worst: { id: string; probability: number } | undefined;
-
-  for (const question of questions) {
+): { id: string; probability: number }[] {
+  if (questions.length === 0) throw new Error("no risk questions defined");
+  return questions.map((question) => {
     const answer = answers.find((a) => a.id === question.id);
     if (!answer) {
       throw new Error(`no answer for "${question.id}"`);
@@ -262,15 +268,8 @@ function worstAnswer(
     if (!Number.isFinite(probability) || probability < 0 || probability > 1) {
       throw new Error(`probability out of range for "${question.id}": ${probability}`);
     }
-    if (!worst || probability > worst.probability) {
-      worst = { id: question.id, probability };
-    }
-  }
-
-  if (!worst) {
-    throw new Error("no risk questions defined");
-  }
-  return worst;
+    return { id: question.id, probability };
+  });
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
