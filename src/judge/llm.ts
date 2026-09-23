@@ -8,6 +8,9 @@ import type {
   JudgeState,
   NoulAnswer,
   NoulQuestion,
+  RubricBackend,
+  RubricLevel,
+  RubricResult,
 } from "./types.js";
 
 /**
@@ -89,7 +92,7 @@ function listLabels(labels: string[]): string {
   return labels.length <= 2 ? labels.join(" or ") : `${labels.slice(0, -1).join(", ")} or ${labels.at(-1)}`;
 }
 
-export class LlmJudge implements JudgeBackend, ChoiceBackend {
+export class LlmJudge implements JudgeBackend, ChoiceBackend, RubricBackend {
   readonly name: string;
 
   private readonly client: OpenAI;
@@ -184,6 +187,54 @@ export class LlmJudge implements JudgeBackend, ChoiceBackend {
       answers: options.map((o, i) => ({ id: o.id, probability: mass[i]! / coverage })),
       coverage: Math.min(1, coverage),
     };
+  }
+
+  /**
+   * Place a state on a rubric of up to nine levels, from one token.
+   *
+   * The levels are numbered 1 to n and the model answers with a digit, so the
+   * whole distribution over the rubric is read off one forward pass, the way
+   * `choice()` reads its options. What comes back is the distribution, its
+   * mean and its spread — a model torn between 1 and 5 has a mean of 3 and a
+   * spread that says not to believe it.
+   */
+  async rubric(state: JudgeState, ask: string, levels: RubricLevel[]): Promise<RubricResult> {
+    if (levels.length < 2 || levels.length > 9) {
+      throw new Error(`rubric() takes 2 to 9 levels, got ${levels.length}`);
+    }
+    const digits = levels.map((_, i) => String(i + 1));
+    const said = `${digits[0]} to ${digits.at(-1)}`;
+    const listed = levels.map((l, i) => `${digits[i]} = ${l.text}`).join("\n");
+
+    const completion = await this.complete(
+      [
+        {
+          role: "system",
+          content: `You rate on a scale. Reply with exactly one digit from ${said}. No punctuation, no explanation, no other text.`,
+        },
+        { role: "user", content: `${renderState(state)}\n\nQuestion: ${ask}\n${listed}\nAnswer (${said}):` },
+      ],
+      Math.min(20, Math.max(this.topLogprobs, levels.length + 4)),
+    );
+
+    const top = completion.choices[0]?.logprobs?.content?.[0]?.top_logprobs;
+    if (!top || top.length === 0) {
+      this.noteDegraded();
+      throw new Error(`${this.model} returned no logprobs, so there is no distribution over the rubric`);
+    }
+    const mass = levels.map(() => 0);
+    for (const entry of top) {
+      const i = digits.indexOf(entry.token.trim());
+      if (i >= 0) mass[i]! += Math.exp(entry.logprob);
+    }
+    const coverage = mass.reduce((a, b) => a + b, 0);
+    if (coverage <= 0) {
+      throw new Error(`no rubric level in the top logprobs (first token ${JSON.stringify(top[0]?.token)})`);
+    }
+    const distribution = levels.map((l, i) => ({ score: l.score, probability: mass[i]! / coverage }));
+    const expected = distribution.reduce((a, d) => a + d.score * d.probability, 0);
+    const spread = Math.sqrt(distribution.reduce((a, d) => a + d.probability * (d.score - expected) ** 2, 0));
+    return { distribution, expected, spread, coverage: Math.min(1, coverage) };
   }
 
   private async askOne(state: string, ask: string): Promise<number> {

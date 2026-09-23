@@ -13,8 +13,7 @@
  * moves — and is a separate interface rather than a method on `JudgeBackend`:
  * a hand-written allow-list has no opinion on which way a snake should turn,
  * and a type that pretended otherwise would move that failure from compile
- * time to runtime. Place-on-a-rubric can follow the same way when something
- * needs it.
+ * time to runtime. Place-on-a-rubric (`rubric`) followed the same way.
  */
 
 /**
@@ -100,4 +99,35 @@ export interface ChoiceBackend {
    * options, not to rediscover which ones are legal.
    */
   choice(state: JudgeState, ask: string, options: ChoiceOption[]): Promise<ChoiceResult>;
+}
+
+/** One point on a rubric: a score and what it means. */
+export interface RubricLevel {
+  score: number;
+  text: string;
+}
+
+export interface RubricResult {
+  /** P(each level), in the order given, summing to 1. */
+  distribution: Array<{ score: number; probability: number }>;
+  /** The mean score under that distribution. */
+  expected: number;
+  /** Its standard deviation: how sure the judge is of the score, in score units. */
+  spread: number;
+  /** How much of the first token's probability landed on a level at all. */
+  coverage: number;
+}
+
+export interface RubricBackend {
+  readonly name: string;
+
+  /**
+   * Place `state` on a rubric of up to nine levels, scored 1 to n.
+   *
+   * The third primitive, for a question whose answer is a degree rather than
+   * a yes or a choice. A whole distribution comes back, not one score, so a
+   * caller can tell "a confident 3" from "a 1 or a 5, and the model cannot
+   * decide" — the same mean, and not the same answer.
+   */
+  rubric(state: JudgeState, ask: string, levels: RubricLevel[]): Promise<RubricResult>;
 }
