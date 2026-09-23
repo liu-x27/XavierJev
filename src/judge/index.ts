@@ -8,6 +8,9 @@ export {
 export { LlmJudge, type JudgeCapability, type LlmJudgeOptions } from "./llm.js";
 export { createModelRouter, ROUTING_QUESTION, type ModelRouterOptions } from "./router.js";
 export {
+  type ChoiceBackend,
+  type ChoiceOption,
+  type ChoiceResult,
   type JudgeBackend,
   type JudgeState,
   type NoulAnswer,

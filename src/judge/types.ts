@@ -7,12 +7,14 @@
  * gating, retry and stop decisions all have that shape — none of them need a
  * paragraph of generated text.
  *
- * Only the yes/no primitive is here, because that is all the risk gate needs.
- * Pick-one-of-n and place-on-a-rubric belong as *new methods* on
- * `JudgeBackend` when something actually needs them, not as a widened union:
- * every backend can answer yes/no, but a hand-written allow-list cannot
- * meaningfully score a rubric, and a type that pretends otherwise moves the
- * failure from compile time to runtime.
+ * Two primitives so far. Yes/no (`noul`) is what the risk gate and the router
+ * need, and every backend can answer it. Pick-one-of-n (`choice`) arrived with
+ * the first decision that had more than two outcomes — the snake arena's four
+ * moves — and is a separate interface rather than a method on `JudgeBackend`:
+ * a hand-written allow-list has no opinion on which way a snake should turn,
+ * and a type that pretended otherwise would move that failure from compile
+ * time to runtime. Place-on-a-rubric can follow the same way when something
+ * needs it.
  */
 
 /**
@@ -65,3 +67,37 @@ export interface JudgeBackend {
  * command through as safe.
  */
 export const UNKNOWN_PROBABILITY = 0.5;
+
+/** One of the outcomes a choice question offers. */
+export interface ChoiceOption {
+  /** Stable key, used to pair answers back to options. */
+  id: string;
+  /** What the option is, as the model reads it. */
+  text: string;
+}
+
+export interface ChoiceResult {
+  /** P(option), one per option in the order given, summing to 1. */
+  answers: NoulAnswer[];
+  /**
+   * How much of the model's first-token probability landed on the option
+   * labels at all, before renormalising over them. Near 1 means the model
+   * answered the question it was asked; low means it wanted to say something
+   * else, and the renormalised answers are a guess about a guess.
+   */
+  coverage: number;
+}
+
+export interface ChoiceBackend {
+  readonly name: string;
+
+  /**
+   * Pick one of `options` for `ask` against `state`.
+   *
+   * Offer only the options that are allowed. A rule that can rule a move out
+   * should do so before the question is asked, the way the gate's static deny
+   * list runs before the judge: the model's job is to choose among legal
+   * options, not to rediscover which ones are legal.
+   */
+  choice(state: JudgeState, ask: string, options: ChoiceOption[]): Promise<ChoiceResult>;
+}

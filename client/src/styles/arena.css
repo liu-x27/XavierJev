@@ -1,0 +1,510 @@
+/*
+ * The snake arena. Built from the same tokens as everything else, so it
+ * takes on whichever theme is showing; the few things a theme wants to do
+ * differently are at the bottom.
+ *
+ * Arena tokens: --snake --snake-head --food --halo (the judge's probability
+ * for each cell next to the head, drawn on the board).
+ */
+
+.arena-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  width: 100%;
+}
+.arena {
+  --snake: var(--ok);
+  --snake-head: var(--ok);
+  --food: var(--hot);
+  --halo: var(--info);
+  /* Sized to fit the window with its controls under it: the chrome above
+     the arena is the theme's, so the theme says how tall it is. */
+  --board: min(560px, calc(100vh - var(--arena-chrome, 250px)));
+  display: grid;
+  grid-template-columns: minmax(0, var(--board)) 340px;
+  justify-content: center;
+  align-items: start;
+  gap: 28px;
+  padding: 28px 24px 40px;
+}
+
+/* ------------------------------------------------------------- stage */
+
+.arena-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.arena-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+.arena-kicker {
+  font: 11px var(--mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.arena-title {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin-top: 4px;
+}
+.arena-judge {
+  font: 11.5px var(--mono);
+  color: var(--dim);
+  padding: 4px 10px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.board {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: var(--radius);
+  border: 1px solid var(--line-2);
+  background-color: var(--panel);
+  background-image:
+    linear-gradient(var(--line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size: calc(100% / var(--n)) calc(100% / var(--n));
+  background-position: -1px -1px;
+  overflow: hidden;
+  transition: border-color 200ms;
+  & > i {
+    position: absolute;
+    width: calc(100% / var(--n));
+    height: calc(100% / var(--n));
+    left: calc(var(--x) * 100% / var(--n));
+    top: calc(var(--y) * 100% / var(--n));
+    padding: 2px;
+    &::before {
+      content: "";
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+  }
+  &[data-crashed] {
+    border-color: var(--hot);
+  }
+}
+/* No slide between cells: at twenty-odd moves a second every transition is
+   interrupted by the next move, and the snake smears into a staircase. */
+.seg {
+  &::before {
+    border-radius: 28%;
+    background: var(--snake);
+    opacity: calc(1 - var(--i) * 0.6);
+  }
+}
+.board .head {
+  z-index: 2;
+  &::before {
+    background: var(--snake-head);
+    opacity: 1;
+    box-shadow: 0 0 14px color-mix(in srgb, var(--snake-head) 60%, transparent);
+  }
+}
+.food::before {
+  border-radius: 50%;
+  background: var(--food);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--food) 70%, transparent);
+  animation: food-pulse 1.4s ease-in-out infinite;
+}
+.board .halo {
+  z-index: 1;
+  padding: 3px;
+  &::before {
+    border-radius: 24%;
+    border: 2px solid color-mix(in srgb, var(--halo) calc(var(--p) * 100%), transparent);
+    background: color-mix(in srgb, var(--halo) calc(var(--p) * 30%), transparent);
+  }
+}
+.board-crash {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-content: center;
+  gap: 6px;
+  text-align: center;
+  background: color-mix(in srgb, var(--bg) 62%, transparent);
+  backdrop-filter: blur(2px);
+  animation: rise 200ms var(--ease) both;
+  & b {
+    font: 600 22px var(--mono);
+    color: var(--hot);
+    text-transform: capitalize;
+  }
+  & span {
+    font: 12px var(--mono);
+    color: var(--faint);
+  }
+}
+@keyframes food-pulse {
+  50% {
+    transform: scale(0.8);
+  }
+}
+
+.arena-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.arena-play,
+.arena-btn {
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  font-size: 13px;
+}
+.arena-play {
+  padding: 0 14px 0 12px;
+  background: var(--accent);
+  color: var(--on-accent);
+  & kbd {
+    color: inherit;
+    border-color: color-mix(in srgb, var(--on-accent) 35%, transparent);
+    opacity: 0.7;
+  }
+}
+.arena-btn {
+  padding: 0 10px;
+  border: 1px solid var(--line-2);
+  color: var(--dim);
+  &:hover:not(:disabled) {
+    color: var(--text);
+  }
+  &:disabled {
+    opacity: 0.4;
+  }
+  & kbd {
+    border: 0;
+    padding: 0;
+  }
+}
+.arena-controls .segment {
+  padding: 5px 10px;
+  font: 12px var(--mono);
+}
+
+/* --------------------------------------------------------------- hud */
+
+.arena-hud {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 18px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+.arena-policy .segment {
+  font-size: 12.5px;
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+}
+.arena-hint {
+  margin-top: -8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--faint);
+}
+.hud-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.hud-kpi {
+  & b {
+    display: block;
+    font: 500 28px/1 var(--mono);
+    letter-spacing: -0.03em;
+    font-variant-numeric: tabular-nums;
+  }
+  & small {
+    font-size: 12px;
+    color: var(--faint);
+    margin-left: 2px;
+  }
+  & span {
+    display: block;
+    margin-top: 6px;
+    font: 10.5px var(--mono);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+  &[data-tone="ok"] b {
+    color: var(--ok);
+  }
+}
+.hud-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+  font: 11px var(--mono);
+  color: var(--faint);
+  & span:first-child {
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+}
+.probs {
+  display: grid;
+  gap: 7px;
+}
+.prob {
+  --c: var(--dim);
+  display: grid;
+  grid-template-columns: 44px 1fr 44px 28px;
+  gap: 10px;
+  align-items: center;
+  font: 12px var(--mono);
+  opacity: 0.4;
+  &[data-offered] {
+    opacity: 1;
+  }
+  &[data-picked] {
+    --c: var(--ok);
+  }
+  &[data-picked][data-illegal] {
+    --c: var(--hot);
+  }
+}
+.prob-dir {
+  color: var(--dim);
+}
+.prob[data-illegal] .prob-dir {
+  text-decoration: line-through;
+  text-decoration-color: var(--hot);
+}
+.prob-bar {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--line);
+  overflow: hidden;
+  &::before {
+    content: "";
+    display: block;
+    height: 100%;
+    width: calc(var(--p) * 100%);
+    background: var(--c);
+    border-radius: 4px;
+  }
+}
+.prob-p {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.prob[data-picked] .prob-p {
+  color: var(--c);
+}
+.prob-rule {
+  font-size: 10px;
+  color: var(--faint);
+}
+.hud-spark {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 40px;
+  & i {
+    flex: 1;
+    min-height: 2px;
+    height: calc(var(--h, 0) * 100%);
+    border-radius: 1px;
+    background: var(--line-2);
+  }
+  & i:last-child {
+    background: var(--ok);
+  }
+  & i.idle {
+    height: 6%;
+    opacity: 0.5;
+  }
+}
+.hud-facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 16px;
+  & dt {
+    font-size: 11.5px;
+    color: var(--faint);
+  }
+  & dd {
+    margin: 2px 0 0;
+    font: 15px var(--mono);
+    font-variant-numeric: tabular-nums;
+  }
+  & [data-tone="hot"] dd {
+    color: var(--hot);
+  }
+}
+.hud-prompt {
+  & summary {
+    cursor: pointer;
+    font-size: 12.5px;
+    color: var(--dim);
+  }
+  & pre {
+    margin-top: 10px;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--line);
+    background: var(--bg);
+    font: 11.5px/1.6 var(--mono);
+    white-space: pre-wrap;
+    color: var(--dim);
+  }
+}
+
+@media (max-width: 960px) {
+  .arena {
+    grid-template-columns: minmax(0, 560px);
+  }
+}
+
+/* ------------------------------------------------------------ themes */
+
+[data-theme="instrument"] {
+  & .frame[data-view="arena"] {
+    grid-template-columns: 60px minmax(0, 1fr);
+  }
+  & .arena {
+    --snake-head: #e4ff8a;
+  }
+  & .board {
+    background-color: var(--bg);
+  }
+}
+
+[data-theme="editorial"] {
+  & .arena {
+    --snake: var(--text);
+    --snake-head: var(--text);
+    --halo: var(--hot);
+    --arena-chrome: 360px;
+    --board: min(600px, calc(100vh - var(--arena-chrome)));
+    padding-left: 0;
+    padding-right: 0;
+    grid-template-columns: minmax(0, var(--board)) 360px;
+    gap: 44px;
+  }
+  & .arena-kicker {
+    font: 600 11px var(--sans);
+    letter-spacing: 0.16em;
+    color: var(--hot);
+  }
+  & .arena-title {
+    font: 400 40px/1 var(--serif);
+    letter-spacing: -0.02em;
+  }
+  & .arena-judge {
+    border-radius: 0;
+    border-color: var(--text);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 10.5px;
+  }
+  & .board {
+    background-color: transparent;
+    border-color: var(--text);
+  }
+  & .seg::before {
+    border-radius: 0;
+  }
+  & .board .head::before {
+    box-shadow: none;
+  }
+  & .food::before {
+    box-shadow: none;
+  }
+  & .arena-hud {
+    background: none;
+    border: 0;
+    border-left: 1px solid var(--text);
+    padding: 0 0 0 24px;
+  }
+  & .hud-kpi b {
+    font: 400 46px/0.9 var(--serif);
+  }
+  & .hud-kpi[data-tone="ok"] b {
+    color: var(--hot);
+  }
+  & .prob[data-picked] {
+    --c: var(--text);
+  }
+  & .hud-spark i:last-child {
+    background: var(--hot);
+  }
+  & .prob-bar,
+  & .prob-bar::before {
+    border-radius: 0;
+  }
+}
+
+[data-theme="aurora"] {
+  & .arena {
+    --snake: var(--cyan);
+    --snake-head: #fff;
+    --food: var(--pink);
+    --halo: var(--violet);
+    --arena-chrome: 300px;
+    width: min(1100px, 100%);
+    margin: 0 auto;
+  }
+  & .board {
+    background-color: rgba(255, 255, 255, 0.035);
+    border-color: var(--line);
+    backdrop-filter: blur(20px);
+    border-radius: 24px;
+  }
+  & .seg::before {
+    background: linear-gradient(135deg, var(--cyan), var(--violet));
+  }
+  & .board .head::before {
+    background: #fff;
+    box-shadow: 0 0 18px var(--cyan);
+  }
+  & .arena-hud {
+    backdrop-filter: blur(28px) saturate(1.4);
+    border-radius: 24px;
+  }
+  & .arena-play {
+    background: linear-gradient(135deg, var(--violet), var(--cyan));
+    box-shadow: 0 8px 26px rgba(139, 108, 255, 0.4);
+    border-radius: 14px;
+  }
+  & .hud-spark i:last-child {
+    background: var(--cyan);
+  }
+}
+
+@media (max-width: 640px) {
+  .arena {
+    padding: 18px 14px 32px;
+    gap: 18px;
+  }
+  /* no keyboard to press, and no room for the pill beside the title */
+  .arena-judge,
+  .arena-controls kbd {
+    display: none;
+  }
+}

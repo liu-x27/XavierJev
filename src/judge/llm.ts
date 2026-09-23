@@ -1,6 +1,14 @@
 import OpenAI from "openai";
 import { logger } from "../utils/logger.js";
-import type { JudgeBackend, JudgeState, NoulAnswer, NoulQuestion } from "./types.js";
+import type {
+  ChoiceBackend,
+  ChoiceOption,
+  ChoiceResult,
+  JudgeBackend,
+  JudgeState,
+  NoulAnswer,
+  NoulQuestion,
+} from "./types.js";
 
 /**
  * Judge by asking a small model for one token and reading the logprobs.
@@ -73,7 +81,15 @@ const SYSTEM_PROMPT =
   "Reply with exactly one character: Y for yes, N for no. " +
   "No punctuation, no explanation, no other text.";
 
-export class LlmJudge implements JudgeBackend {
+/** Option labels for `choice()`: single letters, one token in every tokenizer. */
+const CHOICE_LABELS = "ABCDEFGH";
+
+/** "A, B or C" */
+function listLabels(labels: string[]): string {
+  return labels.length <= 2 ? labels.join(" or ") : `${labels.slice(0, -1).join(", ")} or ${labels.at(-1)}`;
+}
+
+export class LlmJudge implements JudgeBackend, ChoiceBackend {
   readonly name: string;
 
   private readonly client: OpenAI;
@@ -109,6 +125,65 @@ export class LlmJudge implements JudgeBackend {
         probability: await this.askOne(rendered, question.ask),
       })),
     );
+  }
+
+  /**
+   * Pick one of up to eight options, from one token.
+   *
+   * The options are labelled A, B, C… and the model answers with a label, so
+   * the whole distribution over the options comes out of a single forward
+   * pass: P(A), P(B), P(C) are read off the same top logprobs, and no option
+   * waits for another the way separate yes/no questions would.
+   *
+   * Renormalised over the labels, like the yes/no path, and for the same
+   * reason — but unlike yes/no, how much mass the labels had is returned as
+   * `coverage` rather than thrown away. With four options there is room for
+   * a model to put most of its mass on "To" or "Since", the start of a
+   * sentence it wanted to write, and a caller should be able to see that.
+   *
+   * No hard-label fallback: a single letter with no probability behind it is
+   * not a distribution, so an endpoint without logprobs throws here even when
+   * `allowHardLabels` is on.
+   */
+  async choice(state: JudgeState, ask: string, options: ChoiceOption[]): Promise<ChoiceResult> {
+    if (options.length < 2 || options.length > CHOICE_LABELS.length) {
+      throw new Error(`choice() takes 2 to ${CHOICE_LABELS.length} options, got ${options.length}`);
+    }
+    const labels = [...CHOICE_LABELS.slice(0, options.length)];
+    const said = listLabels(labels);
+    const listed = options.map((o, i) => `${labels[i]}. ${o.text}`).join("\n");
+
+    const completion = await this.complete(
+      [
+        {
+          role: "system",
+          content: `You choose one option. Reply with exactly one letter: ${said}. No punctuation, no explanation, no other text.`,
+        },
+        { role: "user", content: `${renderState(state)}\n\nQuestion: ${ask}\n${listed}\nAnswer (${said}):` },
+      ],
+      // Room for every label plus the tokens a model reaches for instead.
+      Math.min(20, Math.max(this.topLogprobs, options.length + 4)),
+    );
+
+    const top = completion.choices[0]?.logprobs?.content?.[0]?.top_logprobs;
+    if (!top || top.length === 0) {
+      this.noteDegraded();
+      throw new Error(`${this.model} returned no logprobs, so there is no distribution over the options`);
+    }
+
+    const mass = labels.map(() => 0);
+    for (const entry of top) {
+      const i = labels.indexOf(entry.token.trim().toUpperCase());
+      if (i >= 0) mass[i]! += Math.exp(entry.logprob);
+    }
+    const coverage = mass.reduce((a, b) => a + b, 0);
+    if (coverage <= 0) {
+      throw new Error(`no option label in the top logprobs (first token ${JSON.stringify(top[0]?.token)})`);
+    }
+    return {
+      answers: options.map((o, i) => ({ id: o.id, probability: mass[i]! / coverage })),
+      coverage: Math.min(1, coverage),
+    };
   }
 
   private async askOne(state: string, ask: string): Promise<number> {
@@ -204,6 +279,7 @@ export class LlmJudge implements JudgeBackend {
 
   private async complete(
     messages: OpenAI.Chat.ChatCompletionMessageParam[],
+    topLogprobs = this.topLogprobs,
   ): Promise<OpenAI.Chat.ChatCompletion> {
     const base = { model: this.model, messages, max_tokens: 1, temperature: 0 } as const;
 
@@ -215,7 +291,7 @@ export class LlmJudge implements JudgeBackend {
       return await this.client.chat.completions.create({
         ...base,
         logprobs: true,
-        top_logprobs: this.topLogprobs,
+        top_logprobs: topLogprobs,
       });
     } catch (err) {
       // Some compatible endpoints reject the parameter outright rather than

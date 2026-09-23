@@ -70,10 +70,10 @@ export interface ModelRouterOptions {
  * take it; per-turn routing is the next step, and it wants measuring before
  * it ships.
  *
- * **Two tiers, so the question is a yes/no.** Jev's `Choice` primitive is the
- * right shape for three or more, and `JudgeBackend` has no `choice()` method
- * precisely because nothing needed one yet. A third tier is what would earn
- * it.
+ * **Two tiers, so the question is a yes/no.** A pick-one-of-n primitive is
+ * the right shape for three or more, and exists now as `ChoiceBackend` — the
+ * snake arena needed four outcomes. Two tiers need only one question; a third
+ * is what would move the router onto it.
  *
  * **Every failure lands on the strong model.** A judge that throws, times
  * out, or returns something that is not a probability gets the expensive
