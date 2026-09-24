@@ -647,9 +647,49 @@ await checkAsync("停：组合判断先问便宜的，说停就不再问模型�
 });
 
 // ─────────────────────────────────────────────
-// 8. What a count can claim
+// 8. Coverage: an answer that was mostly something else
 // ─────────────────────────────────────────────
-section("8. Bounds");
+section("8. Coverage");
+
+await checkAsync("noul()：Y/N 之外的概率照样算进 coverage，归一只在 Y 和 N 之间", async () => {
+  // 70% 落在 "The" 上：模型想写一句话
+  const fake = await fakeLogprobEndpoint([
+    { token: "The", p: 0.7 },
+    { token: "Y", p: 0.2 },
+    { token: "N", p: 0.1 },
+  ]);
+  try {
+    const [a] = await fake.judge.noul({ command: "ls" }, [{ id: "q", ask: "?" }]);
+    if (!a || Math.abs(a.probability - 2 / 3) > 1e-9) throw new Error(`P(yes): ${a?.probability}`);
+    if (a.coverage === undefined || Math.abs(a.coverage - 0.3) > 1e-9) throw new Error(`coverage: ${a.coverage}`);
+  } finally {
+    await fake.close();
+  }
+});
+
+// A backend whose every answer is P, with only `coverage` of the token on Y or N.
+const thinJudge = (probability: number, coverage: number): JudgeBackend => ({
+  name: "thin",
+  noul: async (_s, qs) => qs.map((q) => ({ id: q.id, probability, coverage })),
+});
+
+await checkAsync("coverage 不到一半的回答当作判断失败：闸门问用户、路由选强模型、不重试、不停", async () => {
+  const gate = await createRiskGate({ backend: thinJudge(0.01, 0.3) })(ls);
+  if (gate.action !== "ask" || gate.probability !== undefined) throw new Error(`闸门: ${JSON.stringify(gate)}`);
+  const kept = await createRiskGate({ backend: thinJudge(0.01, 0.9) })(ls);
+  if (kept.action !== "allow" || kept.answers?.[0]?.coverage !== 0.9) throw new Error(`够的 coverage 应当照常放行: ${JSON.stringify(kept)}`);
+  const route = await createModelRouter({ backend: thinJudge(0.01, 0.3), strong: "claude-opus-5", cheap: "claude-haiku-4-5" })("hi");
+  if (route.model !== "claude-opus-5") throw new Error(`路由: ${route.model}`);
+  const retry = await createRetryJudge({ backend: thinJudge(0.99, 0.3) })(outage);
+  if (retry.retry) throw new Error("coverage 太低还重试了");
+  const stop = await createStopJudge({ backend: thinJudge(0.99, 0.3) })({ prompt: "go", turn: 4, recent: [boom, boom, boom, boom] });
+  if (stop.stop) throw new Error("coverage 太低还判停了");
+});
+
+// ─────────────────────────────────────────────
+// 9. What a count can claim
+// ─────────────────────────────────────────────
+section("9. Bounds");
 
 check("0/76 只能说明误放率低于 3.9%（95%）；零误放要证明低于 5%/2%/1% 需要 59/149/299 条", () => {
   const b = upperBound(0, 76);

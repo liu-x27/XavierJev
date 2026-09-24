@@ -123,10 +123,7 @@ export class LlmJudge implements JudgeBackend, ChoiceBackend, RubricBackend {
     // One call per question: each answer is a single token, so they cannot
     // share a completion, and they have no reason to wait for each other.
     return Promise.all(
-      questions.map(async (question) => ({
-        id: question.id,
-        probability: await this.askOne(rendered, question.ask),
-      })),
+      questions.map(async (question) => ({ id: question.id, ...(await this.askOne(rendered, question.ask)) })),
     );
   }
 
@@ -237,7 +234,7 @@ export class LlmJudge implements JudgeBackend, ChoiceBackend, RubricBackend {
     return { distribution, expected, spread, coverage: Math.min(1, coverage) };
   }
 
-  private async askOne(state: string, ask: string): Promise<number> {
+  private async askOne(state: string, ask: string): Promise<{ probability: number; coverage?: number }> {
     const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content: `${state}\n\nQuestion: ${ask}\nAnswer (Y or N):` },
@@ -280,7 +277,7 @@ export class LlmJudge implements JudgeBackend, ChoiceBackend, RubricBackend {
         `${this.model} answered but returned no logprobs, so there is no probability to threshold — pass allowHardLabels to measure it anyway`,
       );
     }
-    return isYes ? DEGRADED_YES : DEGRADED_NO;
+    return { probability: isYes ? DEGRADED_YES : DEGRADED_NO };
   }
 
   /**
@@ -366,14 +363,16 @@ export class LlmJudge implements JudgeBackend, ChoiceBackend, RubricBackend {
 }
 
 /**
- * P(yes) over the yes/no mass only.
+ * P(yes) over the yes/no mass only, and how much mass that was.
  *
  * Renormalising over just the two is on purpose: at temperature 0 with a
  * one-character instruction the rest of the distribution is whitespace and
  * stray punctuation, and counting it as evidence for "no" would make every
- * answer look safer than it is.
+ * answer look safer than it is. What the renormalising hides is returned
+ * beside it as `coverage`, as `choice()` does, so a caller can tell a model
+ * that answered from one that wanted to say something else.
  */
-function probabilityFromLogprobs(top: readonly { token: string; logprob: number }[]): number {
+function probabilityFromLogprobs(top: readonly { token: string; logprob: number }[]): { probability: number; coverage: number } {
   let yes = 0;
   let no = 0;
 
@@ -389,7 +388,7 @@ function probabilityFromLogprobs(top: readonly { token: string; logprob: number 
   if (total <= 0) {
     throw new Error("no yes/no token in the top logprobs");
   }
-  return yes / total;
+  return { probability: yes / total, coverage: Math.min(1, total) };
 }
 
 /** `key: value` lines — short, ordered, and the same shape every time. */

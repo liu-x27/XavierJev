@@ -8,9 +8,9 @@
  * `stop.ts` turn each of these into questions and back.
  *
  * They were written for, and are still used by, the agent loop in
- * mini-claude-code, where they sat in its `src/types.ts`; they moved here
- * unchanged apart from `ModelId`, which was a union of that framework's model
- * names and here is any string.
+ * mini-claude-code, where they sat in its `src/types.ts`. Two things changed
+ * in the move: `ModelId`, a union of that framework's model names, is any
+ * string here, and the gate's answers carry their coverage.
  */
 
 /** A model identifier, in whatever form the caller's client takes. */
@@ -56,7 +56,7 @@ export interface GateVerdict {
    * them; the rest are there so a UI can show which harm held a call and
    * which ones were never in doubt.
    */
-  answers?: Array<{ id: string; probability: number }> | undefined;
+  answers?: Array<{ id: string; probability: number; coverage?: number }> | undefined;
   /** How long the backend took to answer, in milliseconds. */
   latencyMs?: number | undefined;
   /** The auto-allow threshold the verdict was made against. */

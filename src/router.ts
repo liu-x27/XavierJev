@@ -1,6 +1,6 @@
 import type { ModelId, ModelRouter, RouteVerdict } from "./decisions.js";
 import { logger } from "./log.js";
-import type { JudgeBackend, NoulQuestion } from "./types.js";
+import { type JudgeBackend, MIN_COVERAGE, type NoulAnswer, type NoulQuestion } from "./types.js";
 
 /**
  * The question the router asks about a request.
@@ -124,7 +124,7 @@ export function createModelRouter(options: ModelRouterOptions): ModelRouter {
   };
 }
 
-function readRoutingProbability(answers: readonly { id: string; probability: number }[]): number {
+function readRoutingProbability(answers: readonly NoulAnswer[]): number {
   const answer = answers.find((a) => a.id === ROUTING_QUESTION.id);
   if (!answer) {
     throw new Error(`no answer for "${ROUTING_QUESTION.id}"`);
@@ -132,6 +132,9 @@ function readRoutingProbability(answers: readonly { id: string; probability: num
   const { probability } = answer;
   if (!Number.isFinite(probability) || probability < 0 || probability > 1) {
     throw new Error(`probability out of range: ${probability}`);
+  }
+  if (answer.coverage !== undefined && !(answer.coverage >= MIN_COVERAGE)) {
+    throw new Error(`only ${answer.coverage.toFixed(2)} of the answer was a yes or a no`);
   }
   return probability;
 }

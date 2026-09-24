@@ -42,6 +42,32 @@ export interface NoulAnswer {
   id: string;
   /** P(yes), in [0, 1]. */
   probability: number;
+  /**
+   * How much of the first token's probability landed on a yes or a no at all,
+   * before renormalising over the two — what `choice()` and `rubric()` call
+   * coverage. Set by backends that read probabilities; absent otherwise.
+   */
+  coverage?: number;
+}
+
+/**
+ * Below this coverage an answer is not an answer.
+ *
+ * A model that put most of its first token on "The" or "Since" meant to write
+ * a sentence, and renormalising what little it left on Y and N turns that
+ * into a confident-looking number. So the four decisions treat such an answer
+ * as a judge failure and fall back the way each one fails. llama3.1:8b puts
+ * all of it on Y or N (1.000 on every call measured); the limit is for a
+ * model that does not.
+ */
+export const MIN_COVERAGE = 0.5;
+
+/** A usable P(yes) from an answer: a probability in [0, 1] with enough of the token behind it. */
+export function usableProbability(answer: NoulAnswer | undefined): number | undefined {
+  const p = answer?.probability;
+  if (typeof p !== "number" || !(p >= 0 && p <= 1)) return undefined;
+  if (answer?.coverage !== undefined && !(answer.coverage >= MIN_COVERAGE)) return undefined;
+  return p;
 }
 
 export interface JudgeBackend {

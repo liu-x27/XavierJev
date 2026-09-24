@@ -1,6 +1,6 @@
 import type { GateVerdict, PermissionRequest, RiskGate } from "./decisions.js";
 import { logger } from "./log.js";
-import type { JudgeBackend, JudgeState, NoulQuestion } from "./types.js";
+import { type JudgeBackend, type JudgeState, MIN_COVERAGE, type NoulAnswer, type NoulQuestion } from "./types.js";
 
 /**
  * The questions the gate asks, one per kind of harm.
@@ -255,9 +255,9 @@ function buildState(request: PermissionRequest, maxValueChars: number): JudgeSta
  * a backend failure, never a quiet "no".
  */
 function validAnswers(
-  answers: readonly { id: string; probability: number }[],
+  answers: readonly NoulAnswer[],
   questions: readonly NoulQuestion[],
-): { id: string; probability: number }[] {
+): NoulAnswer[] {
   if (questions.length === 0) throw new Error("no risk questions defined");
   return questions.map((question) => {
     const answer = answers.find((a) => a.id === question.id);
@@ -268,7 +268,11 @@ function validAnswers(
     if (!Number.isFinite(probability) || probability < 0 || probability > 1) {
       throw new Error(`probability out of range for "${question.id}": ${probability}`);
     }
-    return { id: question.id, probability };
+    const { coverage } = answer;
+    if (coverage !== undefined && !(coverage >= MIN_COVERAGE)) {
+      throw new Error(`only ${coverage.toFixed(2)} of the answer to "${question.id}" was a yes or a no`);
+    }
+    return { id: question.id, probability, ...(coverage !== undefined ? { coverage } : {}) };
   });
 }
 

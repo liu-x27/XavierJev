@@ -50,5 +50,7 @@ export {
   type JudgeState,
   type NoulAnswer,
   type NoulQuestion,
+  MIN_COVERAGE,
   UNKNOWN_PROBABILITY,
+  usableProbability,
 } from "./types.js";

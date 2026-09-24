@@ -1,6 +1,6 @@
 import type { RetryJudge, RetryVerdict, ToolFailure } from "./decisions.js";
 import { logger } from "./log.js";
-import type { JudgeBackend, NoulQuestion } from "./types.js";
+import { type JudgeBackend, type NoulQuestion, usableProbability } from "./types.js";
 
 /**
  * The question, phrased so that "yes" is the claim that earns a retry.
@@ -100,10 +100,10 @@ export function createRetryJudge(options: RetryJudgeOptions): RetryJudge {
           timer = setTimeout(() => reject(new Error(`no answer in ${timeoutMs} ms`)), timeoutMs);
         }),
       ]);
-      const p = answers.find((a) => a.id === RETRY_QUESTION.id)?.probability;
+      const p = usableProbability(answers.find((a) => a.id === RETRY_QUESTION.id));
       const latencyMs = Date.now() - started;
-      if (typeof p !== "number" || !(p >= 0 && p <= 1)) {
-        return { retry: false, probability: undefined, reason: "the judge gave no probability", latencyMs };
+      if (p === undefined) {
+        return { retry: false, probability: undefined, reason: "the judge gave no usable probability", latencyMs };
       }
       return p >= retryAt
         ? { retry: true, probability: p, reason: `P(transient)=${p.toFixed(3)} ≥ ${retryAt}`, latencyMs }

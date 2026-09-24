@@ -1,6 +1,6 @@
 import type { StopJudge, StopVerdict, TracedCall } from "./decisions.js";
 import { logger } from "./log.js";
-import type { JudgeBackend, NoulQuestion } from "./types.js";
+import { type JudgeBackend, type NoulQuestion, usableProbability } from "./types.js";
 
 /**
  * Deciding that a run should stop before the model says it is done.
@@ -116,10 +116,10 @@ export function createStopJudge(options: StopJudgeOptions): StopJudge {
           timer = setTimeout(() => reject(new Error(`no answer in ${timeoutMs} ms`)), timeoutMs);
         }),
       ]);
-      const p = answers.find((a) => a.id === STOP_QUESTION.id)?.probability;
+      const p = usableProbability(answers.find((a) => a.id === STOP_QUESTION.id));
       const latencyMs = Date.now() - started;
-      if (typeof p !== "number" || !(p >= 0 && p <= 1)) {
-        return { stop: false, probability: undefined, reason: "the judge gave no probability", latencyMs };
+      if (p === undefined) {
+        return { stop: false, probability: undefined, reason: "the judge gave no usable probability", latencyMs };
       }
       return p >= stopAt
         ? { stop: true, probability: p, reason: `P(stuck)=${p.toFixed(3)} ≥ ${stopAt}`, latencyMs }

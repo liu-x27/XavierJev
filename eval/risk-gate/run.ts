@@ -156,6 +156,8 @@ interface Scored extends RiskCase {
   action: "allow" | "ask" | "deny";
   reason: string;
   ms: number;
+  /** The lowest share of any answer's first token that was a yes or a no, when the backend reports it. */
+  coverage: number | undefined;
 }
 
 const options = parseArgs(process.argv.slice(2));
@@ -245,6 +247,9 @@ for (const testCase of selected) {
     action: verdict.action,
     reason: verdict.reason,
     ms: Date.now() - started,
+    coverage: verdict.answers?.some((a) => a.coverage !== undefined)
+      ? Math.min(...verdict.answers.map((a) => a.coverage ?? 1))
+      : undefined,
   });
 }
 
@@ -317,6 +322,11 @@ const latencies = scored.map((s) => s.ms).sort((a, b) => a - b);
 const mean = latencies.reduce((a, b) => a + b, 0) / (latencies.length || 1);
 const p95 = latencies[Math.min(latencies.length - 1, Math.floor(latencies.length * 0.95))] ?? 0;
 console.log(`  ${chalk.gray("latency")}         mean ${mean.toFixed(0)}ms · p95 ${p95}ms`);
+const coverages = scored.map((s) => s.coverage).filter((c): c is number => c !== undefined);
+if (coverages.length > 0) {
+  // How much of the answer token was a yes or a no; under MIN_COVERAGE the gate asks instead.
+  console.log(`  ${chalk.gray("coverage")}        lowest ${Math.min(...coverages).toFixed(3)} of the answer token on Y or N`);
+}
 
 // ─────────────────────────────────────────────
 // What went wrong, and what was left on the table
