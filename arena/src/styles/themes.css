@@ -1,0 +1,222 @@
+/*
+ * The three themes, as far as the arena needs them: each one's tokens, how
+ * it paints the page, and how it draws the segmented control. Taken from
+ * mini-claude-code's instrument.css, editorial.css and aurora.css, whose
+ * layouts were built around the chat transcript; what the arena itself
+ * does differently per theme is at the bottom of arena.css.
+ */
+
+/* Instrument — dark, dense, and built around the numbers. */
+[data-theme="instrument"] {
+  color-scheme: dark;
+  --bg: #09090b;
+  --panel: #0f1013;
+  --panel-2: #14161a;
+  --line: #1e2127;
+  --line-2: #2a2e36;
+  --text: #ecedee;
+  --dim: #9096a0;
+  --faint: #5b616b;
+  --ok: #c4f24c;
+  --ask: #ffb547;
+  --hot: #ff5d5d;
+  --info: #8fb4ff;
+  --accent: #c4f24c;
+  --on-accent: #09090b;
+  --code: #c4f24c;
+  --code-bg: rgba(196, 242, 76, 0.07);
+  --sans: "Geist Variable", "Segoe UI", system-ui, sans-serif;
+  --mono: "Geist Mono Variable", "Cascadia Mono", ui-monospace, monospace;
+  --radius: 12px;
+  --radius-sm: 9px;
+  --drawer: #0f1013;
+  --scrim: rgba(0, 0, 0, 0.55);
+  --shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
+  --focus: 0 0 0 2px var(--bg), 0 0 0 4px rgba(196, 242, 76, 0.55);
+
+  & body {
+    background-color: var(--bg);
+    background-image: radial-gradient(var(--line) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+}
+
+/* Editorial — paper, serif, a rule under the heading. */
+[data-theme="editorial"] {
+  color-scheme: light;
+  --bg: #f3efe6;
+  --panel: #ebe5d8;
+  --panel-2: #e4ddcd;
+  --line: rgba(20, 19, 17, 0.22);
+  --line-2: #141311;
+  --text: #141311;
+  --dim: #57534b;
+  --faint: #8f897d;
+  --ok: #2f6b45;
+  --ask: #b4540a;
+  --hot: #d7361f;
+  --info: #141311;
+  --accent: #d7361f;
+  --on-accent: #f3efe6;
+  --code: #141311;
+  --code-bg: #ebe5d8;
+  --serif: "Instrument Serif", Georgia, serif;
+  --sans: "Inter Variable", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono Variable", "Cascadia Mono", ui-monospace, monospace;
+  --radius: 0px;
+  --radius-sm: 0px;
+  --drawer: #f3efe6;
+  --scrim: rgba(20, 19, 17, 0.28);
+  --shadow: -30px 0 60px rgba(20, 19, 17, 0.12);
+  --focus: 0 0 0 2px var(--bg), 0 0 0 3px var(--text);
+
+  & body {
+    font-size: 15px;
+    line-height: 1.6;
+    &::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.35;
+      z-index: 30;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.3 0 0 0 0 0.25 0 0 0 0 0.2 0 0 0 .08 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+  }
+  & kbd {
+    border-radius: 0;
+  }
+
+  & .eyebrow {
+    color: var(--hot);
+    letter-spacing: 0.16em;
+  }
+  & .segment[aria-checked="true"] {
+    background: var(--text);
+    color: var(--bg);
+    box-shadow: none;
+  }
+}
+
+/* Aurora — glass over a slow gradient. */
+[data-theme="aurora"] {
+  color-scheme: dark;
+  --bg: #06070d;
+  --panel: rgba(255, 255, 255, 0.055);
+  --panel-2: rgba(255, 255, 255, 0.09);
+  --line: rgba(255, 255, 255, 0.12);
+  --line-2: rgba(255, 255, 255, 0.2);
+  --text: #f2f3f8;
+  --dim: #a4a8bd;
+  --faint: #6a6f88;
+  --violet: #8b6cff;
+  --cyan: #37d7ff;
+  --pink: #ff5fd2;
+  --ok: #5cf0b0;
+  --ask: #ffbf5a;
+  --hot: #ff6b81;
+  --info: #37d7ff;
+  --accent: #8b6cff;
+  --on-accent: #0b0c14;
+  --code: #37d7ff;
+  --code-bg: rgba(55, 215, 255, 0.12);
+  --sans: "Space Grotesk Variable", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono Variable", "Cascadia Mono", ui-monospace, monospace;
+  --radius: 22px;
+  --radius-sm: 14px;
+  --drawer: rgba(14, 15, 26, 0.72);
+  --scrim: rgba(3, 4, 8, 0.4);
+  --shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
+  --focus: 0 0 0 2px var(--bg), 0 0 0 4px rgba(139, 108, 255, 0.7);
+
+  & body {
+    font-size: 15px;
+    line-height: 1.55;
+  }
+  & kbd {
+    border-color: var(--line);
+    color: var(--dim);
+    border-radius: 5px;
+  }
+
+  /* ----------------------------------------------------------- backdrop */
+
+  & .aurora {
+    position: fixed;
+    inset: -20%;
+    filter: blur(90px) saturate(1.2);
+    opacity: 0.55;
+    pointer-events: none;
+    & i {
+      position: absolute;
+      border-radius: 50%;
+      will-change: transform;
+    }
+    & i:nth-child(1) {
+      width: 55vw;
+      height: 55vw;
+      left: 5%;
+      top: -10%;
+      background: radial-gradient(circle, var(--violet), transparent 60%);
+      animation: drift-a 38s ease-in-out infinite alternate;
+    }
+    & i:nth-child(2) {
+      width: 45vw;
+      height: 45vw;
+      right: 0;
+      top: 5%;
+      background: radial-gradient(circle, var(--cyan), transparent 60%);
+      opacity: 0.75;
+      animation: drift-b 46s ease-in-out infinite alternate;
+    }
+    & i:nth-child(3) {
+      width: 50vw;
+      height: 50vw;
+      left: 35%;
+      bottom: -25%;
+      background: radial-gradient(circle, var(--pink), transparent 60%);
+      opacity: 0.6;
+      animation: drift-c 54s ease-in-out infinite alternate;
+    }
+  }
+  & .grain {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.18;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  & .glass {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    backdrop-filter: blur(28px) saturate(1.4);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.08) inset,
+      0 30px 80px rgba(0, 0, 0, 0.35);
+  }
+
+  & .segmented {
+    background: rgba(0, 0, 0, 0.25);
+    border-color: var(--line);
+  }
+  & .segment[aria-checked="true"] {
+    background: rgba(255, 255, 255, 0.1);
+  }
+}
+
+@keyframes drift-a {
+  to {
+    transform: translate(12vw, 8vh) scale(1.1);
+  }
+}
+@keyframes drift-b {
+  to {
+    transform: translate(-10vw, 12vh) scale(0.92);
+  }
+}
+@keyframes drift-c {
+  to {
+    transform: translate(-14vw, -10vh) scale(1.08);
+  }
+}

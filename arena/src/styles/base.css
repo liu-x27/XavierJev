@@ -1,0 +1,193 @@
+/*
+ * What every theme shares, for the arena: the reset, the few controls it
+ * uses, and the animation keyframes. Taken from mini-claude-code's
+ * client/src/styles/base.css, whose other sections style the chat UI;
+ * paint comes from the tokens each theme sets in themes.css.
+ *
+ * Tokens every theme defines:
+ *   --bg --panel --panel-2 --line --line-2        surfaces and rules
+ *   --text --dim --faint                          three levels of ink
+ *   --ok --ask --hot --info --accent --on-accent  signal colours
+ *   --sans --mono --radius --radius-sm            type and shape
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+* {
+  margin: 0;
+}
+html,
+body,
+#root,
+.app {
+  height: 100%;
+}
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+}
+button,
+input,
+textarea {
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+}
+button {
+  cursor: pointer;
+  background: none;
+  border: 0;
+  padding: 0;
+}
+button:disabled {
+  cursor: default;
+}
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+::selection {
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+::placeholder {
+  color: var(--faint);
+  opacity: 1;
+}
+code,
+kbd,
+pre {
+  font-family: var(--mono);
+}
+kbd {
+  display: inline-block;
+  font: 10.5px/1 var(--mono);
+  padding: 3px 5px 2px;
+  border: 1px solid var(--line-2);
+  border-radius: 4px;
+  color: var(--faint);
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--faint) 55%, transparent);
+  border-radius: 10px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+.icon {
+  flex-shrink: 0;
+  display: block;
+}
+.grow {
+  flex: 1;
+}
+.eyebrow {
+  font: 600 11px var(--sans);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+/* ------------------------------------------------------------- controls */
+
+.icon-btn {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  color: var(--faint);
+  transition:
+    color 140ms,
+    background 140ms;
+  &:hover {
+    color: var(--text);
+    background: color-mix(in srgb, var(--text) 7%, transparent);
+  }
+}
+.text-btn {
+  color: inherit;
+  transition: color 140ms;
+  &:hover {
+    color: var(--text);
+  }
+}
+.link {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.segmented {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 4px;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+.segment {
+  padding: 6px 10px;
+  border-radius: calc(var(--radius-sm) - 3px);
+  color: var(--dim);
+  font-size: 12.5px;
+  font-weight: 550;
+  &[aria-checked="true"] {
+    background: var(--panel-2);
+    color: var(--text);
+    box-shadow: 0 0 0 1px var(--line-2);
+  }
+}
+
+/* ----------------------------------------------------------- animation */
+
+:root {
+  --ease: cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+}

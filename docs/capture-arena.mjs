@@ -2,17 +2,16 @@
  * Record the arena playing live, as docs/snake-arena.gif (or, with
  * CAPTURE_GAME=flappy, docs/flappy-arena.gif).
  *
- * Same idea as capture-screenshots.mjs: drive the real UI against a real
- * judge and record what it does. The GIF plays at the rate the frames were
- * captured, so what it shows is the speed the judge actually decided at —
- * not sped up, and not a replay.
+ * Drive the real arena against a real judge and record what it does. The
+ * GIF plays at the rate the frames were captured, so what it shows is the
+ * speed the judge actually decided at — not sped up, and not a replay.
  *
- * Needs an Electron binary (see capture-screenshots.mjs for why it is not a
- * devDependency) and ffmpeg on the PATH:
+ * Needs an Electron binary — not a devDependency, since it is a large
+ * download for one script — and ffmpeg on the PATH:
  *
  *   AGENT_JUDGE_BASE_URL=http://127.0.0.1:11434/v1 AGENT_JUDGE_MODEL=llama3.1:8b \
- *     AGENT_JUDGE_API_KEY=ollama npm run server        # terminal 1
- *   npm run client                                     # terminal 2
+ *     AGENT_JUDGE_API_KEY=ollama npm run arena         # terminal 1
+ *   npm run arena:client                               # terminal 2
  *   path/to/electron.exe docs/capture-arena.mjs
  */
 import { app, BrowserWindow } from "electron";
@@ -20,11 +19,12 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 // CAPTURE_GAME=flappy records the Flappy tab instead, as docs/flappy-arena.gif.
 const GAME = process.env.CAPTURE_GAME === "flappy" ? "flappy" : "snake";
-const URL = `http://localhost:5174/${GAME === "flappy" ? "#arena/flappy" : "#arena"}`;
-const OUT = `D:/CODE/agent-app/docs/${GAME}-arena.gif`;
+const URL = `http://localhost:5175/${GAME === "flappy" ? "#arena/flappy" : "#arena"}`;
+const OUT = path.join(path.dirname(fileURLToPath(import.meta.url)), `${GAME}-arena.gif`);
 const WARMUP_MS = 4000; // let the latency numbers fill in first
 const RECORD_MS = 8000;
 const WIDTH = 920; // of the GIF, in pixels
