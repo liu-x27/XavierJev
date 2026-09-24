@@ -83,7 +83,7 @@ The state is a flat map of short strings, rendered as `key: value` lines, and it
 caller's job to keep it to the few facts the question is about.
 
 ```ts
-noul(state, questions): Promise<{ id: string; probability: number }[]>        // yes or no
+noul(state, questions): Promise<{ id; probability; coverage? }[]>              // yes or no
 choice(state, ask, options): Promise<{ answers; coverage }>                   // one of 2–8
 rubric(state, ask, levels): Promise<{ distribution; expected; spread; coverage }>  // 2–9 levels
 ```
@@ -94,7 +94,9 @@ did not choose. `choice()` labels its options A, B, C… and `rubric()` numbers 
 so the whole distribution comes out of one forward pass, and `coverage` says how much of
 that token's probability landed on the labels at all — a model that wanted to start a
 sentence instead should be visible as that, not as a confident renormalisation of what
-was left.
+was left. `noul()` reports it too, as the share of the token on a yes or a no, and an
+answer with less than half (`MIN_COVERAGE`) counts as a judge failure in all four decisions
+below. llama3.1:8b has put all of it on Y or N on every call measured.
 
 `LlmJudge` (`src/llm.ts`) is the backend for all three. `AllowlistJudge` answers the risk
 gate's four questions from patterns, offline, and says 0.5 — no opinion — to anything
@@ -104,8 +106,9 @@ reasoning model spends its one token on `<think>`.
 
 ## Four decisions an agent loop makes
 
-The interfaces are in `src/decisions.ts`; mini-claude-code's loop is the one that calls
-them. Each has a direction it fails in, chosen by what the error costs: the gate falls
+The interfaces are in `src/decisions.ts`. They were written for mini-claude-code's agent
+loop, which still calls them — from its own copy of this code, until it depends on this
+package. Each has a direction it fails in, chosen by what the error costs: the gate falls
 through to asking, the router to the expensive model, the retry judge to not retrying,
 the stop judge to carrying on.
 
@@ -369,17 +372,24 @@ allow-list's rejections, including the two it once let through; `choice()` and `
 against a stand-in endpoint, renormalised with coverage beside them and an error rather
 than a guess when no label comes back; the snake and Flappy rules; the retry and stop
 judges' thresholds and failure directions; an answer with too little of its token on a yes
-or a no, refused by all four decisions; the gate's self-check, in both directions of drift; the answer order reaching the prompt;
-and the bounds `eval/stats.ts` puts beside a count.
+or a no, refused by all four decisions; the gate's self-check, in both directions of
+drift; the answer order reaching the prompt; and the bounds `eval/stats.ts` puts beside a
+count.
 
-Every table above was measured in mini-claude-code, with this code and these sets, before
-the decision layer moved here; after the move the gate's dev set was run again —
-`allowlist` 23/41 · 0/42, `llm` 36/41 · 0/42 — and matches. The `llm` rows need a judge
+The tables for the four decisions, the games, throughput and calibration were measured in
+mini-claude-code, with this code and these sets, before the decision layer moved here.
+After the move the gate's dev set was run again — `allowlist` 23/41 · 0/42, `llm` 36/41 ·
+0/42 — and matches; the answer-order and latency tables were measured here, on
+2026-09-24. The `llm` rows need a judge
 standing up first; the ones published were measured against a local Ollama serving
 `llama3.1:8b`.
 
-**What is not known.** Whether a hosted provider's logprobs agree with a local model's:
-this path has only run against Ollama. Whether a third fewer prompts feels different
+**What is not known.** Anything about a judge other than llama3.1:8b: every `llm` number
+here is that one model, at Ollama's default quantisation. Whether a hosted provider's
+logprobs agree with a local model's: this path has only run against Ollama. How the gate
+does on the commands an agent actually sends over weeks, rather than on labelled sets of
+a hundred or so, and against commands written to slip past it — obfuscated, encoded,
+split across variables — which no set here contains. Whether a third fewer prompts feels different
 across a long session than it does across a table of 153 rows. The 0.2 threshold is a
 property of this judge and this prompt, not of the gate: a different model needs it
 measured again. The router's out-of-sample
