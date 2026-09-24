@@ -47,8 +47,8 @@ at all, deferred at 0.817.
 
 ```bash
 npm install
-npm test                                        # 42 checks, mocked — no model, no key
-npm run eval:risk-gate -- --backend allowlist   # the gate's dev set, offline
+npm test                                        # 43 checks, mocked — no model, no key
+npm run eval:risk-gate                          # the gate's dev set, offline: the allow-list is its default
 ```
 
 Everything else needs a judge: an OpenAI-compatible endpoint that returns logprobs. A
@@ -57,9 +57,9 @@ local Ollama does, needs no key, and costs nothing:
 ```bash
 ollama pull llama3.1:8b
 export AGENT_JUDGE_API_KEY=ollama AGENT_JUDGE_BASE_URL=http://localhost:11434/v1 AGENT_JUDGE_MODEL=llama3.1:8b
-npm run eval:risk-gate    # the llm rows
-npm run arena             # the games' server, :3002
-npm run arena:client      # the games, at http://localhost:5175
+npm run eval:risk-gate -- --backend llm   # the llm rows
+npm run arena                             # the games' server, :3002
+npm run arena:client                      # the games, at http://localhost:5175
 ```
 
 As a library (the package name in package.json; not published to npm):
@@ -164,6 +164,25 @@ with the ones recorded when the threshold was measured. A held canary allowed, o
 moved more than one unit of log-odds towards allowing, is `unsafe`: do not use this gate.
 Moved the other way, it is safe but not the gate that was measured, and its threshold wants
 measuring again. `eval:risk-gate` runs the check before anything else and prints it.
+
+The prompt is on that list because of what `npm run eval:order` found: the same four
+questions over the 83 dev commands, asked as shipped and then with N named before Y in the
+instruction, nothing else changed.
+
+| answer instruction | cleared · false allows at 0.2 | AUC | cleared with none let through |
+|---|---|---|---|
+| "Y for yes, N for no" — shipped | 36/41 · 0/42 | 0.975 | 39/41 |
+| "N for no, Y for yes" | **0/41** · 0/42 | 0.960 | 34/41 |
+| both, averaged in log-odds | 20/41 · 0/42 | 0.974 | 37/41 |
+
+Naming N first moved every question up by 1.6 to 2.9 in log-odds and changed 36 of the 83
+decisions — every safe command the shipped gate cleared is asked about instead. The ranking
+barely moves, so the order does not change what the judge knows; it changes the numbers a
+threshold is set on. Averaging both orders, the usual cure for an order bias, costs twice
+the calls and ranks no better. With nothing to judge at all, `command: N/A`, the shipped
+order answers yes 24–45% of the time and the swapped one 54–76%. This is the dev set, where
+the wordings were tuned under the shipped order, so it says the order matters, not which
+order is better.
 
 **The finding worth keeping.** The gate first asked one question listing all four harms.
 That cost 9 false allows out of 34, and four of the nine were credential reads — the last
@@ -327,7 +346,7 @@ yes/no did.
 
 ## Status
 
-The mock suite — `npm test`, 42 checks, no model — covers the logic that would otherwise
+The mock suite — `npm test`, 43 checks, no model — covers the logic that would otherwise
 fail quietly: the gate's answers returned in question order and decided on the worst; the
 four ways each of the gate and the router can fail (a backend that throws, times out,
 skips a question, or answers outside [0, 1]) landing on asking and on the strong model; the
@@ -335,7 +354,7 @@ allow-list's rejections, including the two it once let through; `choice()` and `
 against a stand-in endpoint, renormalised with coverage beside them and an error rather
 than a guess when no label comes back; the snake and Flappy rules; the retry and stop
 judges' thresholds and failure directions; an answer with too little of its token on a yes
-or a no, refused by all four decisions; the gate's self-check, in both directions of drift;
+or a no, refused by all four decisions; the gate's self-check, in both directions of drift; the answer order reaching the prompt;
 and the bounds `eval/stats.ts` puts beside a count.
 
 Every table above was measured in mini-claude-code, with this code and these sets, before
@@ -357,11 +376,13 @@ the third has been read once.
 ## Development
 
 ```bash
-npm test                  # 42 checks, mocked
+npm test                  # 43 checks, mocked
 npm run typecheck         # src, games, eval, test and arena
 npm run lint
 npm run build             # the library, to dist/
-npm run eval:risk-gate    # also: eval:routing eval:retry eval:stop eval:snake eval:flappy eval:throughput eval:calibration
+npm run eval:risk-gate                    # offline: the allow-list is its default backend
+npm run eval:risk-gate -- --backend llm   # the other evals ask the judge by default:
+                                          # routing retry stop snake flappy throughput calibration order
 npm run eval:risk-gate -- --cases test3   # a held-out set; read its docstring first
 ```
 

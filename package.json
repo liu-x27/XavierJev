@@ -29,6 +29,7 @@
     "eval:throughput": "tsx eval/throughput/run.ts",
     "eval:retry": "tsx eval/retry/run.ts",
     "eval:calibration": "tsx eval/calibration/run.ts",
+    "eval:order": "tsx eval/order/run.ts",
     "eval:stop": "tsx eval/stop/run.ts",
     "lint": "biome lint src/ games/ test/",
     "format": "biome format --write src/ games/ test/"

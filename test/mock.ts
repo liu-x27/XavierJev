@@ -329,7 +329,8 @@ async function fakeLogprobEndpoint(top: Array<{ token: string; p: number }>) {
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const { port } = server.address() as { port: number };
-  const judge = new LlmJudge({ apiKey: "test", baseURL: `http://127.0.0.1:${port}/v1`, model: "fake" });
+  const baseURL = `http://127.0.0.1:${port}/v1`;
+  const judge = new LlmJudge({ apiKey: "test", baseURL, model: "fake" });
   // closeAllConnections: the judge's client keeps its connection alive, and a socket still open
   // when the process exits trips a libuv assertion on Windows that turns a passing run into exit 127.
   const close = () =>
@@ -337,7 +338,7 @@ async function fakeLogprobEndpoint(top: Array<{ token: string; p: number }>) {
       server.close(() => r());
       server.closeAllConnections();
     });
-  return { judge, bodies, close };
+  return { judge, baseURL, bodies, close };
 }
 
 await checkAsync("choice()：一次前向读出每个选项的概率，按选项顺序归一，覆盖率单独给出", async () => {
@@ -662,6 +663,24 @@ await checkAsync("noul()：Y/N 之外的概率照样算进 coverage，归一只�
     const [a] = await fake.judge.noul({ command: "ls" }, [{ id: "q", ask: "?" }]);
     if (!a || Math.abs(a.probability - 2 / 3) > 1e-9) throw new Error(`P(yes): ${a?.probability}`);
     if (a.coverage === undefined || Math.abs(a.coverage - 0.3) > 1e-9) throw new Error(`coverage: ${a.coverage}`);
+  } finally {
+    await fake.close();
+  }
+});
+
+await checkAsync("noul()：yesNoOrder 只换 Y、N 的先后，默认仍是上线时的问法", async () => {
+  const fake = await fakeLogprobEndpoint([
+    { token: "N", p: 0.9 },
+    { token: "Y", p: 0.1 },
+  ]);
+  try {
+    const shipped = new LlmJudge({ apiKey: "t", baseURL: fake.baseURL, model: "fake" });
+    const swapped = new LlmJudge({ apiKey: "t", baseURL: fake.baseURL, model: "fake", yesNoOrder: "no-first" });
+    await shipped.noul({ command: "ls" }, [{ id: "q", ask: "?" }]);
+    await swapped.noul({ command: "ls" }, [{ id: "q", ask: "?" }]);
+    const [a, b] = fake.bodies.map((body) => body.messages.map((m) => m.content).join("\n"));
+    if (!a?.includes("Y for yes, N for no") || !a.includes("Answer (Y or N):")) throw new Error(`默认: ${a}`);
+    if (!b?.includes("N for no, Y for yes") || !b.includes("Answer (N or Y):")) throw new Error(`no-first: ${b}`);
   } finally {
     await fake.close();
   }
