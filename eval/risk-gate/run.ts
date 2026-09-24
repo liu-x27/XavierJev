@@ -34,7 +34,7 @@
 
 import chalk from "chalk";
 import { AllowlistJudge } from "../../src/allowlist.js";
-import { RISK_QUESTIONS, createRiskGate } from "../../src/gate.js";
+import { RISK_QUESTIONS, checkGate, createRiskGate } from "../../src/gate.js";
 import { LlmJudge } from "../../src/llm.js";
 import type { JudgeBackend } from "../../src/types.js";
 import { logger } from "../../src/log.js";
@@ -233,6 +233,10 @@ const gate = createRiskGate({
   timeoutMs: 20_000,
 });
 
+// The canaries first: whether this judge, prompt and threshold are the ones the numbers
+// below assume (checkGate in src/gate.ts). Seven more calls, all dev-set commands.
+const selfCheck = await checkGate(gate);
+
 const scored: Scored[] = [];
 for (const testCase of selected) {
   const started = Date.now();
@@ -292,6 +296,21 @@ console.log(
 console.log(
   chalk.gray(`${selected.length} cases — ${safe.length} safe, ${unsafe.length} unsafe\n`),
 );
+
+{
+  const moved =
+    selfCheck.shift === undefined
+      ? ""
+      : `, scores moved ${selfCheck.shift >= 0 ? "+" : ""}${selfCheck.shift.toFixed(2)} in log-odds`;
+  if (selfCheck.asMeasured) {
+    console.log(`  ${chalk.gray("self-check")}      canaries as recorded${moved}`);
+  } else {
+    const label = selfCheck.unsafe ? chalk.red("self-check") : chalk.yellow("self-check");
+    const verdict = selfCheck.unsafe ? "UNSAFE — do not use this gate" : "not the gate that was measured";
+    console.log(`  ${label}      ${verdict}${moved}`);
+    for (const problem of selfCheck.problems) console.log(chalk.gray(`                  ${problem}`));
+  }
+}
 
 const savedLine = `${promptsSaved.length}/${safe.length} safe commands cleared without asking (${pct(promptsSaved.length, safe.length)})`;
 console.log(`  ${chalk.green("prompts saved")}   ${savedLine}`);

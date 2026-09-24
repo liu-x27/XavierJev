@@ -47,7 +47,7 @@ at all, deferred at 0.817.
 
 ```bash
 npm install
-npm test                                        # 37 checks, mocked — no model, no key
+npm test                                        # 42 checks, mocked — no model, no key
 npm run eval:risk-gate -- --backend allowlist   # the gate's dev set, offline
 ```
 
@@ -154,6 +154,16 @@ Saying below 1% would take 299 unsafe commands with none let through — four ti
 `eval:risk-gate` prints that bound under every false-allow count, from exact binomial
 bounds in `eval/stats.ts`. They treat each command as an independent draw, and commands
 generated a task at a time are not quite that, so the real uncertainty is a little wider.
+
+**A threshold is only the one measured if nothing under it moved.** 0.2 is a property of
+the judge, the prompt and the four questions together, and each of them can change with no
+error anywhere: another model behind the same name, another quantisation, a prompt someone
+tidied. `checkGate(gate)` puts the gate through seven canaries from the dev set — three
+reads it clears far below 0.2, and one sure case for each harm — and compares their scores
+with the ones recorded when the threshold was measured. A held canary allowed, or scores
+moved more than one unit of log-odds towards allowing, is `unsafe`: do not use this gate.
+Moved the other way, it is safe but not the gate that was measured, and its threshold wants
+measuring again. `eval:risk-gate` runs the check before anything else and prints it.
 
 **The finding worth keeping.** The gate first asked one question listing all four harms.
 That cost 9 false allows out of 34, and four of the nine were credential reads — the last
@@ -317,14 +327,16 @@ yes/no did.
 
 ## Status
 
-The mock suite — `npm test`, 37 checks, no model — covers the logic that would otherwise
+The mock suite — `npm test`, 42 checks, no model — covers the logic that would otherwise
 fail quietly: the gate's answers returned in question order and decided on the worst; the
 four ways each of the gate and the router can fail (a backend that throws, times out,
 skips a question, or answers outside [0, 1]) landing on asking and on the strong model; the
 allow-list's rejections, including the two it once let through; `choice()` and `rubric()`
 against a stand-in endpoint, renormalised with coverage beside them and an error rather
 than a guess when no label comes back; the snake and Flappy rules; the retry and stop
-judges' thresholds and failure directions; and the bounds `eval/stats.ts` puts beside a count.
+judges' thresholds and failure directions; an answer with too little of its token on a yes
+or a no, refused by all four decisions; the gate's self-check, in both directions of drift;
+and the bounds `eval/stats.ts` puts beside a count.
 
 Every table above was measured in mini-claude-code, with this code and these sets, before
 the decision layer moved here; after the move the gate's dev set was run again —
@@ -345,7 +357,7 @@ the third has been read once.
 ## Development
 
 ```bash
-npm test                  # 37 checks, mocked
+npm test                  # 42 checks, mocked
 npm run typecheck         # src, games, eval, test and arena
 npm run lint
 npm run build             # the library, to dist/

@@ -35,7 +35,7 @@ import {
   step,
 } from "../games/snake.js";
 import { AllowlistJudge } from "../src/allowlist.js";
-import { createRiskGate, RISK_QUESTIONS } from "../src/gate.js";
+import { checkGate, createRiskGate, GATE_CANARIES, RISK_QUESTIONS } from "../src/gate.js";
 import { LlmJudge } from "../src/llm.js";
 import { createRetryJudge, patternRetryJudge } from "../src/retry.js";
 import { createModelRouter } from "../src/router.js";
@@ -699,6 +699,59 @@ check("0/76 只能说明误放率低于 3.9%（95%）；零误放要证明低于
   const one = [0.05, 0.02, 0.01].map((t) => casesNeeded(t, 1)).join("/");
   if (one !== "93/236/473") throw new Error(`一次误放: ${one}`);
   if (upperBound(3, 3) !== 1 || upperBound(0, 0) !== 1) throw new Error("全错或没有样本时上界应为 1");
+});
+
+// ─────────────────────────────────────────────
+// 10. The gate's self-check
+// ─────────────────────────────────────────────
+section("10. Self-check");
+
+// A judge that gives every question the canary's recorded worst answer, moved by `shift` in log-odds.
+function recordedJudge(shift: number): JudgeBackend {
+  const recorded = new Map(GATE_CANARIES.map((c) => [c.command, c.recorded]));
+  const logOdds = (p: number) => {
+    const q = Math.min(1 - 1e-4, Math.max(1e-4, p));
+    return Math.log(q / (1 - q));
+  };
+  return {
+    name: "recorded",
+    noul: async (state, qs) => {
+      const p = recorded.get(state.command ?? "") ?? 0.5;
+      return qs.map((q) => ({ id: q.id, probability: 1 / (1 + Math.exp(-(logOdds(p) + shift))) }));
+    },
+  };
+}
+
+await checkAsync("自检：和记录一致时通过；分数往保守方向偏 2 只算走样，往放行方向偏 2 判不安全", async () => {
+  const same = await checkGate(createRiskGate({ backend: recordedJudge(0) }));
+  if (!same.asMeasured || same.unsafe || Math.abs(same.shift ?? 9) > 1e-6) throw new Error(`原样: ${JSON.stringify(same.problems)}`);
+  const cautious = await checkGate(createRiskGate({ backend: recordedJudge(2) }));
+  if (cautious.asMeasured || cautious.unsafe) throw new Error(`往保守偏: ${JSON.stringify(cautious.problems)}`);
+  const loose = await checkGate(createRiskGate({ backend: recordedJudge(-2) }));
+  if (!loose.unsafe || loose.results.some((r) => r.expect === "ask" && r.action === "allow")) {
+    throw new Error(`往放行偏 2 时，必须拦的还拦得住，但应当判不安全: ${JSON.stringify(loose.problems)}`);
+  }
+});
+
+await checkAsync("自检：放行了一条必须拦的命令就判不安全；判断器挂了只算走样（反正都会问）", async () => {
+  const lax = await checkGate(createRiskGate({ backend: fakeJudge(0.01) }));
+  if (!lax.unsafe || !lax.problems.some((p) => p.includes("rm -rf src"))) throw new Error(`应当判不安全: ${JSON.stringify(lax.problems)}`);
+  const down = await checkGate(
+    createRiskGate({
+      backend: {
+        name: "down",
+        noul: async () => {
+          throw new Error("x");
+        },
+      },
+    }),
+  );
+  if (down.asMeasured || down.unsafe || down.shift !== undefined) throw new Error(`挂了: ${JSON.stringify(down.problems)}`);
+});
+
+await checkAsync("自检：白名单后端也按记录通过", async () => {
+  const check = await checkGate(createRiskGate({ backend: new AllowlistJudge() }));
+  if (!check.asMeasured || check.unsafe) throw new Error(JSON.stringify(check.problems));
 });
 
 // ─────────────────────────────────────────────

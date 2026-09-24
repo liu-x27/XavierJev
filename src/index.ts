@@ -17,7 +17,11 @@ export type {
 } from "./decisions.js";
 export { type Logger, type LogLevel, logger, setLogger } from "./log.js";
 export {
+  checkGate,
   createRiskGate,
+  GATE_CANARIES,
+  type GateCanary,
+  type GateCheck,
   RISK_QUESTION_IDS,
   RISK_QUESTIONS,
   type RiskGateOptions,
