@@ -8,6 +8,6 @@
     "lib": ["ES2022", "DOM"],
     "jsx": "react-jsx"
   },
-  "include": ["src/**/*", "games/**/*", "eval/**/*", "test/**/*", "arena/**/*"],
+  "include": ["src/**/*", "games/**/*", "eval/**/*", "test/**/*", "arena/**/*", "integrations/**/*"],
   "exclude": ["node_modules", "dist", "arena/dist"]
 }

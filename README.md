@@ -47,7 +47,7 @@ at all, deferred at 0.817.
 
 ```bash
 npm install
-npm test                                        # 43 checks, mocked — no model, no key
+npm test                                        # 46 checks, mocked — no model, no key
 npm run eval:risk-gate                          # the gate's dev set, offline: the allow-list is its default
 ```
 
@@ -74,6 +74,34 @@ const gate = createRiskGate({ backend: judge });
 const verdict = await gate({ toolName: "Bash", input: { command: "rm -rf dist" }, description: "rm -rf dist" });
 // { action: "ask", probability: 0.99…, answers: [four of them], latencyMs, threshold: 0.2 }
 ```
+
+## In Claude Code
+
+`plugins/xavierjev-gate` points Claude Code's PermissionRequest hook — which fires only when
+Claude Code is about to ask you about a tool call — at a local server running this gate. A
+shell command the gate scores safe is cleared without the prompt; everything else, and every
+failure, including the server not running at all, is asked about as usual. It never denies,
+and it stays out of every permission mode but Manual and accept-edits: auto mode has a
+classifier of its own, and a prompt that classifier falls back to is not this gate's to
+answer.
+
+```bash
+npm run claude-code                              # the server, :3003, with AGENT_JUDGE_* as above
+claude plugin marketplace add liu-x27/XavierJev
+claude plugin install xavierjev-gate@xavierjev
+```
+
+`npm run claude-code -- --observe` decides and logs without clearing anything. Either way
+each request goes to `~/.xavierjev/claude-code.jsonl`, on this machine only, and the server
+will not start if the judge returns no logprobs or the gate fails its self-check. Only the
+command is shown to the judge, not the description the agent wrote for it.
+
+Tested: the hook's decisions as mock checks, and the server against the real judge with
+hand-sent requests — `git log --oneline -20` cleared at 0.021, `rm -rf src` at 0.999 left
+to the prompt, auto mode and a Write left alone, a foreign `Host` refused. Not tested: a
+session of real use. Claude Code already lets some read-only commands through by itself,
+so what share of the prompts that do reach the hook it saves is not the held-out sets'
+third, and is not known yet.
 
 ## Three primitives
 
@@ -364,7 +392,7 @@ yes/no did.
 
 ## Status
 
-The mock suite — `npm test`, 43 checks, no model — covers the logic that would otherwise
+The mock suite — `npm test`, 46 checks, no model — covers the logic that would otherwise
 fail quietly: the gate's answers returned in question order and decided on the worst; the
 four ways each of the gate and the router can fail (a backend that throws, times out,
 skips a question, or answers outside [0, 1]) landing on asking and on the strong model; the
@@ -373,8 +401,8 @@ against a stand-in endpoint, renormalised with coverage beside them and an error
 than a guess when no label comes back; the snake and Flappy rules; the retry and stop
 judges' thresholds and failure directions; an answer with too little of its token on a yes
 or a no, refused by all four decisions; the gate's self-check, in both directions of
-drift; the answer order reaching the prompt; and the bounds `eval/stats.ts` puts beside a
-count.
+drift; the answer order reaching the prompt; the Claude Code hook's allow, silence and
+abstentions; and the bounds `eval/stats.ts` puts beside a count.
 
 The tables for the four decisions, the games, throughput and calibration were measured in
 mini-claude-code, with this code and these sets, before the decision layer moved here.
@@ -401,7 +429,7 @@ the third has been read once.
 ## Development
 
 ```bash
-npm test                  # 43 checks, mocked
+npm test                  # 46 checks, mocked
 npm run typecheck         # src, games, eval, test and arena
 npm run lint
 npm run build             # the library, to dist/

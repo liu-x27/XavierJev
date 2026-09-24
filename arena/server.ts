@@ -13,9 +13,10 @@
  *
  * Without a judge both games still run, on their hand-written rules.
  */
-import express, { type NextFunction, type Request, type Response } from "express";
+import express from "express";
 import { FLAP_QUESTION, flapState, forcedFlap, isFlight } from "../games/flappy.js";
 import { isBoard, snakeQuestion } from "../games/snake.js";
+import { localOnly } from "../integrations/local-only.js";
 import { LlmJudge } from "../src/llm.js";
 import type { ChoiceBackend, JudgeBackend } from "../src/types.js";
 
@@ -43,35 +44,6 @@ const judge = await buildJudge();
 /** Snake asks it to pick one of four; Flappy asks it yes or no. */
 const chooser: ChoiceBackend | undefined = judge;
 const flapJudge: JudgeBackend | undefined = judge;
-
-/**
- * Only this machine may ask.
- *
- * The socket is bound to loopback, so nothing on the network can connect; a
- * Host header that is not a loopback name is refused, which is what a
- * DNS-rebinding page would send; and an Origin from anywhere but a loopback
- * page is refused, which is what any other website's fetch would send. The
- * client reaches the API through the Vite proxy, same-origin, so there are
- * no CORS headers at all.
- */
-const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
-
-function isLoopback(url: string): boolean {
-  try {
-    return LOOPBACK_HOSTS.has(new URL(url).hostname);
-  } catch {
-    return false;
-  }
-}
-
-function localOnly(req: Request, res: Response, next: NextFunction): void {
-  const { host, origin } = req.headers;
-  if (!host || !isLoopback(`http://${host}`) || (origin !== undefined && !isLoopback(origin))) {
-    res.status(403).json({ ok: false, reason: "this API only answers pages served from this machine" });
-    return;
-  }
-  next();
-}
 
 const app = express();
 app.use(localOnly);

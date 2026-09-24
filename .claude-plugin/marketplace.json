@@ -1,0 +1,14 @@
+{
+  "name": "xavierjev",
+  "description": "XavierJev's decision layer, for Claude Code",
+  "owner": {
+    "name": "Xinyu Liu"
+  },
+  "plugins": [
+    {
+      "name": "xavierjev-gate",
+      "source": "./plugins/xavierjev-gate",
+      "description": "A local, measured first pass over Claude Code's permission prompts for shell commands"
+    }
+  ]
+}

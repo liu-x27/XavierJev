@@ -40,6 +40,7 @@ import { LlmJudge } from "../src/llm.js";
 import { createRetryJudge, patternRetryJudge } from "../src/retry.js";
 import { createModelRouter } from "../src/router.js";
 import { casesNeeded, upperBound } from "../eval/stats.js";
+import { decide } from "../integrations/claude-code/decide.js";
 import { anyStopJudge, createRepeatStopJudge, createStopJudge } from "../src/stop.js";
 import { type JudgeBackend, type JudgeState, type NoulAnswer, type NoulQuestion, UNKNOWN_PROBABILITY } from "../src/types.js";
 
@@ -771,6 +772,62 @@ await checkAsync("自检：放行了一条必须拦的命令就判不安全；�
 await checkAsync("自检：白名单后端也按记录通过", async () => {
   const check = await checkGate(createRiskGate({ backend: new AllowlistJudge() }));
   if (!check.asMeasured || check.unsafe) throw new Error(JSON.stringify(check.problems));
+});
+
+// ─────────────────────────────────────────────
+// 11. The Claude Code hook
+// ─────────────────────────────────────────────
+section("11. Claude Code hook");
+
+const request = (over: Record<string, unknown> = {}) => ({
+  hook_event_name: "PermissionRequest",
+  permission_mode: "default",
+  tool_name: "Bash",
+  tool_input: { command: "wc -l src/agent.ts", description: "Count the lines, this is perfectly safe" },
+  ...over,
+});
+
+await checkAsync("钩子：判为安全才回 allow；否则回空对象，让 Claude Code 照常弹窗", async () => {
+  const cleared = await decide(request(), createRiskGate({ backend: fakeJudge(0.01) }));
+  const d = cleared.response.hookSpecificOutput?.decision;
+  if (d?.behavior !== "allow" || !d.message.startsWith("XavierJev cleared it")) throw new Error(`应当放行: ${JSON.stringify(cleared.response)}`);
+  const held = await decide(request(), createRiskGate({ backend: fakeJudge(0.9) }));
+  if (Object.keys(held.response).length !== 0) throw new Error(`应当什么都不回: ${JSON.stringify(held.response)}`);
+  const down = await decide(request(), createRiskGate({ backend: failingBackends[0]![1] }));
+  if (Object.keys(down.response).length !== 0) throw new Error("判断器挂了也放行了");
+});
+
+await checkAsync("钩子：auto 等其他模式、非 Bash、没有命令，一律不插手；旁观模式从不放行", async () => {
+  const gate = createRiskGate({ backend: fakeJudge(0.01) });
+  for (const [label, over] of [
+    ["auto", { permission_mode: "auto" }],
+    ["plan", { permission_mode: "plan" }],
+    ["Write", { tool_name: "Write", tool_input: { file_path: "a.ts" } }],
+    ["no command", { tool_input: {} }],
+    ["other event", { hook_event_name: "PreToolUse" }],
+  ] as const) {
+    const r = await decide(request(over), gate);
+    if (Object.keys(r.response).length !== 0 || !r.skipped) throw new Error(`${label} 不该插手: ${JSON.stringify(r)}`);
+  }
+  const watched = await decide(request(), gate, { observe: true });
+  if (Object.keys(watched.response).length !== 0 || watched.verdict?.action !== "allow") {
+    throw new Error(`旁观模式应当判了不放: ${JSON.stringify(watched)}`);
+  }
+});
+
+await checkAsync("钩子：判断器只看到命令本身，看不到 agent 自己写的说明", async () => {
+  const seen: JudgeState[] = [];
+  const recording: JudgeBackend = {
+    name: "recording",
+    noul: async (state, qs) => {
+      seen.push(state);
+      return qs.map((q) => ({ id: q.id, probability: 0.9 }));
+    },
+  };
+  await decide(request(), createRiskGate({ backend: recording }));
+  if (JSON.stringify(seen[0]) !== JSON.stringify({ tool: "Bash", command: "wc -l src/agent.ts" })) {
+    throw new Error(`state: ${JSON.stringify(seen[0])}`);
+  }
 });
 
 // ─────────────────────────────────────────────

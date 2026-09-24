@@ -22,6 +22,7 @@
     "test": "tsx test/mock.ts",
     "arena": "tsx arena/server.ts",
     "arena:client": "vite arena",
+    "claude-code": "tsx integrations/claude-code/server.ts",
     "eval:risk-gate": "tsx eval/risk-gate/run.ts",
     "eval:routing": "tsx eval/routing/run.ts",
     "eval:snake": "tsx eval/snake/run.ts",
@@ -32,8 +33,8 @@
     "eval:calibration": "tsx eval/calibration/run.ts",
     "eval:order": "tsx eval/order/run.ts",
     "eval:stop": "tsx eval/stop/run.ts",
-    "lint": "biome lint src/ games/ test/",
-    "format": "biome format --write src/ games/ test/"
+    "lint": "biome lint src/ games/ test/ integrations/",
+    "format": "biome format --write src/ games/ test/ integrations/"
   },
   "dependencies": {
     "openai": "^6.33.0"

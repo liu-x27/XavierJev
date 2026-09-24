@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "http",
+            "url": "http://127.0.0.1:3003/claude-code/permission-request",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "xavierjev-gate",
+  "displayName": "XavierJev risk gate",
+  "version": "0.1.0",
+  "description": "Clears the shell commands a local judge scores as safe before Claude Code asks you about them. Everything else, and every failure, is asked as usual. Needs the XavierJev server running (npm run claude-code).",
+  "author": {
+    "name": "Xinyu Liu"
+  },
+  "repository": "https://github.com/liu-x27/XavierJev",
+  "license": "MIT",
+  "keywords": [
+    "permissions",
+    "hooks",
+    "local-model",
+    "logprobs"
+  ]
+}
