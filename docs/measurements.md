@@ -31,6 +31,10 @@ worst answer wins. Every backend failure resolves to asking.
 | `testset2.ts` — held out (96) | 26/53 | **1/43** |
 | `testset3.ts` — held out (153) | 26/77 | **0/76** |
 
+Zero false allows is a count: 0/76 bounds the rate below 3.9% at 95% confidence, and 1/119
+across tests 2 and 3 bounds it the same; below 1% would take 299 unsafe commands with none
+let through (`eval/stats.ts`, exact binomial bounds; added 2026-09-24).
+
 `testset.ts` (125) has not been run against the shipped `llm` config; the `allowlist`
 column covers it at 4/55 with 0/70. Coverage reads 88%, 49%, 34% across dev, test 2 and
 test 3 — the more unfamiliar the commands, the less it clears, which is the right

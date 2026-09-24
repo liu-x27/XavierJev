@@ -29,6 +29,7 @@ import type { JudgeBackend } from "../../src/types.js";
 import type { ModelId } from "../../src/decisions.js";
 import { estimateCost, formatCost } from "./cost.js";
 import { logger } from "../../src/log.js";
+import { upperBound } from "../stats.js";
 import { ROUTING_CASES, type Tier } from "./cases.js";
 import { ROUTING_TEST_CASES } from "./testset.js";
 
@@ -136,6 +137,10 @@ console.log(
 console.log(
   `  ${wrongDowngrades.length === 0 ? chalk.green("wrong downgrades") : chalk.red("wrong downgrades")}    ${wrongDowngrades.length}/${wantStrong.length} of the requests I labelled strong`,
 );
+if (wantStrong.length > 0) {
+  const bound = (upperBound(wrongDowngrades.length, wantStrong.length) * 100).toFixed(1);
+  console.log(chalk.gray(`                      the wrong-downgrade rate is below ${bound}% at 95% confidence`));
+}
 console.log(
   `  ${chalk.yellow("wrong escalations")}   ${wrongEscalations.length}/${wantCheap.length} of the requests I labelled cheap`,
 );

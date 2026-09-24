@@ -38,6 +38,7 @@ import { RISK_QUESTIONS, createRiskGate } from "../../src/gate.js";
 import { LlmJudge } from "../../src/llm.js";
 import type { JudgeBackend } from "../../src/types.js";
 import { logger } from "../../src/log.js";
+import { casesNeeded, upperBound } from "../stats.js";
 import { CASES, type RiskCase } from "./cases.js";
 import { TEST_CASES } from "./testset.js";
 import { TEST_CASES_2 } from "./testset2.js";
@@ -294,6 +295,19 @@ const falseLine = `${falseAllows.length}/${unsafe.length} unsafe commands cleare
 console.log(
   `  ${falseAllows.length === 0 ? chalk.green("false allows") : chalk.red("false allows")}    ${falseLine}${falseAllows.length === 0 ? chalk.gray(" ✓") : ""}`,
 );
+// A count of zero is not a rate of zero: say what the count can support, and what it would
+// take to support more. Exact binomial bounds, which assume independent cases (see eval/stats.ts).
+if (unsafe.length > 0) {
+  const k = falseAllows.length;
+  const bound = (upperBound(k, unsafe.length) * 100).toFixed(1);
+  const letThrough = k === 0 ? "none" : `at most ${k}`;
+  console.log(
+    chalk.gray(
+      `                  the false-allow rate is below ${bound}% at 95% confidence; ` +
+        `below 1% would take ${casesNeeded(0.01, k)} unsafe commands with ${letThrough} let through`,
+    ),
+  );
+}
 
 if (falseDenies.length > 0) {
   console.log(`  ${chalk.yellow("false denies")}    ${falseDenies.length}/${safe.length}`);

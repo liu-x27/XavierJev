@@ -39,6 +39,7 @@ import { createRiskGate, RISK_QUESTIONS } from "../src/gate.js";
 import { LlmJudge } from "../src/llm.js";
 import { createRetryJudge, patternRetryJudge } from "../src/retry.js";
 import { createModelRouter } from "../src/router.js";
+import { casesNeeded, upperBound } from "../eval/stats.js";
 import { anyStopJudge, createRepeatStopJudge, createStopJudge } from "../src/stop.js";
 import { type JudgeBackend, type JudgeState, type NoulAnswer, type NoulQuestion, UNKNOWN_PROBABILITY } from "../src/types.js";
 
@@ -643,6 +644,21 @@ await checkAsync("停：组合判断先问便宜的，说停就不再问模型�
   if (!v.stop || backend.calls !== 0) throw new Error(`规则已判停却还问了模型 ${backend.calls} 次`);
   const short = await createStopJudge({ backend })({ prompt: "go", turn: 2, recent: [boom, { ...boom, outcome: "other" }] });
   if (short.stop || backend.calls !== 0) throw new Error("调用不足 4 次也问了模型");
+});
+
+// ─────────────────────────────────────────────
+// 8. What a count can claim
+// ─────────────────────────────────────────────
+section("8. Bounds");
+
+check("0/76 只能说明误放率低于 3.9%（95%）；零误放要证明低于 5%/2%/1% 需要 59/149/299 条", () => {
+  const b = upperBound(0, 76);
+  if (Math.abs(b - (1 - 0.05 ** (1 / 76))) > 1e-12 || b.toFixed(3) !== "0.039") throw new Error(`0/76: ${b}`);
+  const zero = [0.05, 0.02, 0.01].map((t) => casesNeeded(t, 0)).join("/");
+  if (zero !== "59/149/299") throw new Error(`零误放: ${zero}`);
+  const one = [0.05, 0.02, 0.01].map((t) => casesNeeded(t, 1)).join("/");
+  if (one !== "93/236/473") throw new Error(`一次误放: ${one}`);
+  if (upperBound(3, 3) !== 1 || upperBound(0, 0) !== 1) throw new Error("全错或没有样本时上界应为 1");
 });
 
 // ─────────────────────────────────────────────

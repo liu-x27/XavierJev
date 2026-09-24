@@ -36,7 +36,7 @@ at all, deferred at 0.817.
 
 | decision | asked as | measured | where it falls short |
 |---|---|---|---|
-| may this tool call run unasked? | four yes/no, worst wins | 153 held-out commands: 26/77 safe cleared, **0/76** unsafe | 88% cleared on dev, 34% on the held-out set |
+| may this tool call run unasked? | four yes/no, worst wins | 153 held-out commands: 26/77 safe cleared, **0/76** unsafe — a false-allow rate below 3.9% | 88% cleared on dev, 34% on the held-out set |
 | cheap model or strong? | one yes/no | held out: 34% downgraded | 19% of hard requests downgraded — off by default |
 | retry a failed read once? | one yes/no | best wording 29/36 | a regex gets 36/36, and ships |
 | stop a run that is stuck? | repeat rule, then one yes/no | 0 wrong stops, 0 missed, dev and held out | 39 labelled runs in all |
@@ -47,7 +47,7 @@ at all, deferred at 0.817.
 
 ```bash
 npm install
-npm test                                        # 36 checks, mocked — no model, no key
+npm test                                        # 37 checks, mocked — no model, no key
 npm run eval:risk-gate -- --backend allowlist   # the gate's dev set, offline
 ```
 
@@ -148,6 +148,13 @@ realistic tasks, never mentioning harm; only the labels are mine. Test 1 is left
 was run before two of the four questions were rewritten, and is in
 [docs/measurements.md](docs/measurements.md) with that caveat attached.
 
+**Zero is a count, not a rate.** 0/76 is consistent with a false-allow rate anywhere up to
+3.9% at 95% confidence, and tests 2 and 3 together, 1/119, bound it at the same 3.9%.
+Saying below 1% would take 299 unsafe commands with none let through — four times test 3.
+`eval:risk-gate` prints that bound under every false-allow count, from exact binomial
+bounds in `eval/stats.ts`. They treat each command as an independent draw, and commands
+generated a task at a time are not quite that, so the real uncertainty is a little wider.
+
 **The finding worth keeping.** The gate first asked one question listing all four harms.
 That cost 9 false allows out of 34, and four of the nine were credential reads — the last
 clause in the list. Four narrow questions, worst answer wins, removed all four. A single
@@ -173,7 +180,8 @@ scores 40 dev requests and 65 held-out ones, labelled by tier:
 
 This measures agreement with my own tier labels, not whether the cheap model's answer
 would have been good enough, which would need two outputs compared. Nearly four times the
-error rate out of sample, and the reason is structural: a shell command carries its hazard
+error rate out of sample — and 7 of 37 is consistent with a true rate as high as 33% —
+and the reason is structural: a shell command carries its hazard
 on its face, while the difficulty of "optimize the database query performance" depends on
 a codebase the judge is never shown. It is behind a flag, not on by default.
 
@@ -309,14 +317,14 @@ yes/no did.
 
 ## Status
 
-The mock suite — `npm test`, 36 checks, no model — covers the logic that would otherwise
+The mock suite — `npm test`, 37 checks, no model — covers the logic that would otherwise
 fail quietly: the gate's answers returned in question order and decided on the worst; the
 four ways each of the gate and the router can fail (a backend that throws, times out,
 skips a question, or answers outside [0, 1]) landing on asking and on the strong model; the
 allow-list's rejections, including the two it once let through; `choice()` and `rubric()`
 against a stand-in endpoint, renormalised with coverage beside them and an error rather
-than a guess when no label comes back; the snake and Flappy rules; and the retry and stop
-judges' thresholds and failure directions.
+than a guess when no label comes back; the snake and Flappy rules; the retry and stop
+judges' thresholds and failure directions; and the bounds `eval/stats.ts` puts beside a count.
 
 Every table above was measured in mini-claude-code, with this code and these sets, before
 the decision layer moved here; after the move the gate's dev set was run again —
@@ -337,7 +345,7 @@ the third has been read once.
 ## Development
 
 ```bash
-npm test                  # 36 checks, mocked
+npm test                  # 37 checks, mocked
 npm run typecheck         # src, games, eval, test and arena
 npm run lint
 npm run build             # the library, to dist/
