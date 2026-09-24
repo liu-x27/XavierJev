@@ -1,4 +1,21 @@
 export { AllowlistJudge } from "./allowlist.js";
+export type {
+  GateVerdict,
+  ModelId,
+  ModelRouter,
+  PermissionMode,
+  PermissionRequest,
+  RetryJudge,
+  RetryVerdict,
+  RiskGate,
+  RouteVerdict,
+  RunTrace,
+  StopJudge,
+  StopVerdict,
+  ToolFailure,
+  TracedCall,
+} from "./decisions.js";
+export { type Logger, type LogLevel, logger, setLogger } from "./log.js";
 export {
   createRiskGate,
   RISK_QUESTION_IDS,

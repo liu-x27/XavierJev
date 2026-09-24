@@ -1,0 +1,58 @@
+{
+  "name": "xavierjev",
+  "version": "0.1.0",
+  "description": "A decision layer for agent control flow: yes/no, choice and rubric questions answered from one token's probabilities, and measured against labelled sets",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc -p tsconfig.check.json",
+    "test": "tsx test/mock.ts",
+    "arena": "tsx arena/server.ts",
+    "arena:client": "vite arena",
+    "eval:risk-gate": "tsx eval/risk-gate/run.ts",
+    "eval:routing": "tsx eval/routing/run.ts",
+    "eval:snake": "tsx eval/snake/run.ts",
+    "eval:flappy": "tsx eval/flappy/run.ts",
+    "eval:throughput": "tsx eval/throughput/run.ts",
+    "eval:retry": "tsx eval/retry/run.ts",
+    "eval:calibration": "tsx eval/calibration/run.ts",
+    "eval:stop": "tsx eval/stop/run.ts",
+    "lint": "biome lint src/ games/ test/",
+    "format": "biome format --write src/ games/ test/"
+  },
+  "dependencies": {
+    "openai": "^6.33.0"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^0.127.0",
+    "@biomejs/biome": "^1.9.4",
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/geist-mono": "^5.3.0",
+    "@fontsource-variable/inter": "^5.3.0",
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@fontsource-variable/space-grotesk": "^5.3.0",
+    "@fontsource/instrument-serif": "^5.3.0",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.5.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "chalk": "^5.3.0",
+    "express": "^5.2.1",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "tsx": "^4.23.15",
+    "typescript": "^5.6.0",
+    "vite": "^8.0.3"
+  }
+}

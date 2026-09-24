@@ -198,7 +198,7 @@ export function snakeQuestion(
   if (mode === "raw") {
     const state: JudgeState = {};
     for (const d of DIRECTIONS) state[d] = cellAhead(board, d);
-    state["food"] = foodOffset(board);
+    state.food = foodOffset(board);
     return { state, ask: SNAKE_QUESTIONS.raw, options: DIRECTIONS.map((d) => ({ id: d, text: d })) };
   }
   const facts = moveFacts(board);

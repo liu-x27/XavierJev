@@ -1,0 +1,13 @@
+{
+  // Type-check everything, including what tsconfig.json leaves out because it
+  // is run through tsx or vite rather than compiled to dist/.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    "lib": ["ES2022", "DOM"],
+    "jsx": "react-jsx"
+  },
+  "include": ["src/**/*", "games/**/*", "eval/**/*", "test/**/*"],
+  "exclude": ["node_modules", "dist", "arena/dist"]
+}

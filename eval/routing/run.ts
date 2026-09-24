@@ -12,7 +12,7 @@
  * failures is silent and permanent. Neither of these is, so this one reports
  * a saving alongside both error rates and lets the reader weigh them.
  *
- * The saving is computed from the price table in `src/utils/cost.ts` against
+ * The saving is computed from the price table in `eval/routing/cost.ts` against
  * a fixed token profile, not from real runs. That makes it a statement about
  * the price list and the routing decisions — not a measurement of what a
  * month of use would cost, which depends on turn counts this does not model.
