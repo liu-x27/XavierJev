@@ -64,6 +64,7 @@ wrong first.
 | [What the router measures](#what-the-router-measures-and-what-it-cannot) | and why it is the weaker of the two |
 | [The order Y and N are named in](#the-order-y-and-n-are-named-in) | a tidy-looking edit that moved every score, and the self-check it led to |
 | [Where a decision's time goes](#where-a-decisions-time-goes) | one pass per question, a shared prefix, and slots that make it slower |
+| [Telling the snake about room](#telling-the-snake-about-room) | a five-game win that twenty games on a new seed took back |
 
 ---
 
@@ -709,4 +710,31 @@ or a server that reads the shared part once and answers the four questions from 
 batch, which Ollama's per-slot caches do not do. The 200 ms first recorded for the gate's
 four questions, on 2026-09-21, is not what this machine does today; what changed in between
 has not been pinned down.
+
+---
+
+## Telling the snake about room
+
+*2026-09-24, llama3.1:8b on Ollama 0.34.2, `npm run eval:snake`.*
+
+The model plays snake worse than the hand-written rule over the same facts — 27.2 against
+41.0 mean score — while agreeing with it on 86% of moves. The rule's one extra input is the
+exact room each move leaves, which it breaks ties on; the model hears only "enough room" or
+"dead end". So `room` mode tells it, for each open move, whether it leaves the most room or
+less, and asks the same question.
+
+| mean score, whole games | seed 7, five games each | seed 11, twenty games each |
+|---|---|---|
+| rule | 41.0 | 40.9 |
+| model, `facts` (shipped) | 27.2 | 32.1 |
+| model, `room` | **43.0** | 31.5 |
+| model agrees with the rule, `facts` / `room` | 86% / 84% | 86% / 81% |
+
+On the seed the eval has always used, five games each, `room` looked like it closed the
+whole gap and then some. Twenty games on a seed nothing had been tuned on said otherwise: no
+change, and less agreement with the rule. Single decisions did not move either way — the
+best move on 133 of 133 boards in both modes — so the gap is not in the choices a snapshot
+can score, and knowing which move has more room is not what the rule has over the model.
+`facts` stays the default; `room` stays in the eval as a measured refusal. Five games is
+not a sample, which the seed-7 column shows better than any caveat would.
 

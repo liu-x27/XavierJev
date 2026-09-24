@@ -88,7 +88,7 @@ console.log(chalk.bold(`\n${judge.name} · ${BOARDS} boards, ${SIZE}×${SIZE}, s
 const random = seededRandom(SEED);
 const boards = Array.from({ length: BOARDS }, () => randomBoard(random));
 
-for (const mode of ["facts", "raw"] as QuestionMode[]) {
+for (const mode of ["facts", "room", "raw"] as QuestionMode[]) {
   let survives = 0;
   let best = 0;
   let bestPossible = 0;
@@ -143,7 +143,7 @@ for (const mode of ["facts", "raw"] as QuestionMode[]) {
 // ─────────────────────────────────────────────
 console.log(chalk.bold(`\n${GAMES} games each, up to ${MAX_STEPS} moves\n`));
 
-async function play(policy: "model" | "rule", seed: number) {
+async function play(policy: "model" | "rule", seed: number, mode: QuestionMode = "facts") {
   const random = seededRandom(seed);
   let board = newBoard(SIZE, random);
   let score = 0;
@@ -163,7 +163,7 @@ async function play(policy: "model" | "rule", seed: number) {
     const rule = ruleMove(board)!;
     let dir = rule;
     if (policy === "model" && legal.length > 1) {
-      const q = snakeQuestion(board, "facts");
+      const q = snakeQuestion(board, mode);
       const t0 = performance.now();
       try {
         const r = await judge.choice(q.state, q.ask, q.options);
@@ -191,9 +191,15 @@ async function play(policy: "model" | "rule", seed: number) {
   return { score, steps, end, asked, agreed, fallbacks, decisionMs };
 }
 
-for (const policy of ["rule", "model"] as const) {
+// The rule, then the model once per question mode that describes moves (raw cells cannot play a game).
+const players = [
+  { label: "rule", policy: "rule", mode: "facts" },
+  { label: "model, facts", policy: "model", mode: "facts" },
+  { label: "model, room", policy: "model", mode: "room" },
+] as const;
+for (const { label, policy, mode } of players) {
   const results = [];
-  for (let g = 0; g < GAMES; g++) results.push(await play(policy, SEED * 1000 + g));
+  for (let g = 0; g < GAMES; g++) results.push(await play(policy, SEED * 1000 + g, mode));
   const scores = results.map((r) => r.score);
   const mean = scores.reduce((a, b) => a + b, 0) / scores.length;
   const asked = results.reduce((a, r) => a + r.asked, 0);
@@ -202,7 +208,7 @@ for (const policy of ["rule", "model"] as const) {
   const ms = results.reduce((a, r) => a + r.decisionMs, 0);
   const ends = results.map((r) => r.end).join(", ");
   console.log(
-    `${chalk.bold(policy.padEnd(5))}  mean score ${chalk.bold(mean.toFixed(1))}  scores ${scores.join(" ")}` +
+    `${chalk.bold(label.padEnd(12))}  mean score ${chalk.bold(mean.toFixed(1))}  scores ${scores.join(" ")}` +
       `  (${ends})` +
       (policy === "model"
         ? `\n       ${asked} decisions, agreed with the rule on ${((100 * agreed) / Math.max(1, asked)).toFixed(0)}%` +

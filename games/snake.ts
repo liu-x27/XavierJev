@@ -156,15 +156,19 @@ export function moveFacts(board: Board): MoveFacts[] {
   });
 }
 
-export type QuestionMode = "facts" | "raw";
-
+export type QuestionMode = "facts" | "room" | "raw";
 export const SNAKE_QUESTIONS: Record<QuestionMode, string> = {
   facts: "Which move avoids dead ends and gets closer to the food?",
+  // The same question: `room` changes what the model is told, not what it is asked. Measured and
+  // not adopted — see the note on ruleMove below.
+  room: "Which move avoids dead ends and gets closer to the food?",
   raw: "Which move keeps the snake alive and gets it closer to the food?",
 };
-
-const describe = (f: MoveFacts) =>
-  `${f.eats ? "closer to food, eats it" : f.closer ? "closer to food" : "farther from food"}, ${f.deadEnd ? "dead end" : "enough room"}`;
+const foodPart = (f: MoveFacts) => (f.eats ? "closer to food, eats it" : f.closer ? "closer to food" : "farther from food");
+const describe = (f: MoveFacts) => `${foodPart(f)}, ${f.deadEnd ? "dead end" : "enough room"}`;
+/** `room` mode: which of the moves that are not dead ends leaves the most room, the fact the rule breaks ties on. */
+const describeRoom = (f: MoveFacts, most: number) =>
+  `${foodPart(f)}, ${f.deadEnd ? "dead end" : f.room === most ? "most room" : "less room"}`;
 
 function foodOffset(board: Board): string {
   const head = board.snake[0]!;
@@ -202,9 +206,11 @@ export function snakeQuestion(
     return { state, ask: SNAKE_QUESTIONS.raw, options: DIRECTIONS.map((d) => ({ id: d, text: d })) };
   }
   const facts = moveFacts(board);
+  const open = facts.filter((f) => !f.deadEnd);
+  const most = Math.max(...(open.length ? open : facts).map((f) => f.room));
   return {
-    state: Object.fromEntries(facts.map((f) => [f.dir, describe(f)])),
-    ask: SNAKE_QUESTIONS.facts,
+    state: Object.fromEntries(facts.map((f) => [f.dir, mode === "room" ? describeRoom(f, most) : describe(f)])),
+    ask: SNAKE_QUESTIONS[mode],
     options: facts.map((f) => ({ id: f.dir, text: f.dir })),
   };
 }
@@ -214,9 +220,14 @@ export function snakeQuestion(
  * close in, then keep the most room. What the model is measured against.
  *
  * Not quite the same facts: the tie-break reads the exact room count, and the
- * model is only told "enough room" or "dead end". That is most of why the
- * rule outscores it over whole games (41.0 to 27.2 in the eval) while
- * agreeing on 86% of moves.
+ * model is only told "enough room" or "dead end". That looked like most of
+ * why the rule outscores it over whole games (41.0 to 27.2 in the eval) while
+ * agreeing on 86% of moves — so `room` mode tells the model which open move
+ * leaves the most room. On the eval's usual seed, five games each, the model
+ * went from 27.2 to 43.0. On a new seed, twenty games each, it went from 32.1
+ * to 31.5, against the rule's 40.9, and agreed with the rule less (81%
+ * against 86%). The five-game jump was luck; the tie-break is not what the
+ * rule has over the model, and `facts` stays the default.
  */
 export function ruleMove(board: Board): Direction | undefined {
   const rank = (f: MoveFacts) => (f.deadEnd ? 0 : 8) + (f.eats ? 4 : 0) + (f.closer ? 2 : 0);
