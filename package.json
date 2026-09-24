@@ -27,6 +27,7 @@
     "eval:snake": "tsx eval/snake/run.ts",
     "eval:flappy": "tsx eval/flappy/run.ts",
     "eval:throughput": "tsx eval/throughput/run.ts",
+    "eval:latency": "tsx eval/latency/run.ts",
     "eval:retry": "tsx eval/retry/run.ts",
     "eval:calibration": "tsx eval/calibration/run.ts",
     "eval:order": "tsx eval/order/run.ts",

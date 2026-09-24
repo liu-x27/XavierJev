@@ -315,12 +315,27 @@ the last returns, 96 questions per level, on an RTX 5080.
 | p95 as installed, ms | 43 | 72 | 128 | 240 | 463 |
 
 About forty decisions a second is the ceiling, and four parallel slots do not move it:
-past one or two callers, each extra caller adds a place in the queue and p95 grows with
-it. What the numbers are consistent with — not something profiled yet — is that a
-decision is one output token, so there is no token-by-token generation for batching to
-share, which is where parallel slots usually pay. The same judge answers Flappy's one-line
-question in 15 ms at the median against the snake's 30, which points the same way: the
-lever for a decision layer is a shorter question or a smaller model, not more concurrency.
+past one or two callers, each extra caller adds a place in the queue and p95 grows with it.
+
+`npm run eval:latency` takes one gate decision apart, through Ollama's native endpoint,
+which reports how long it spent reading the prompt:
+
+| the gate's four questions about one command | Ollama as installed | `OLLAMA_NUM_PARALLEL=4` |
+|---|---|---|
+| one question, short command | 25–28 ms, 18–20 of them reading the prompt | the same |
+| all four at once, short command | **89 ms** — answered one after another | 107 ms — side by side, and slower |
+| all four at once, 2,000-character command | **278 ms** | 867 ms |
+
+The answer is one token, so the time is in reading the prompt, and below a hundred tokens
+or so that is one pass through the model whatever the length — 85 tokens and 109 both take
+18–20 ms. Past that, length is the cost: a 2,000-character command is 823 tokens and 154 ms.
+The gate's four questions queue behind each other on the server, and they share their
+start: after the first question read that command, the other three took about 20 ms each,
+because the server kept what it had read. Parallel slots undo exactly that. Each slot keeps
+its own copy, so four slots read the same command four times, and the gate gets slower —
+three times slower on the long one. The lever for a decision layer is a smaller model (not
+measured here), or a server that reads the shared part once and answers the four in one
+pass, not more slots.
 
 ## Are the numbers worth thresholding?
 
@@ -382,7 +397,7 @@ npm run lint
 npm run build             # the library, to dist/
 npm run eval:risk-gate                    # offline: the allow-list is its default backend
 npm run eval:risk-gate -- --backend llm   # the other evals ask the judge by default:
-                                          # routing retry stop snake flappy throughput calibration order
+                                          # routing retry stop snake flappy throughput calibration order latency
 npm run eval:risk-gate -- --cases test3   # a held-out set; read its docstring first
 ```
 

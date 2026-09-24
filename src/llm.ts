@@ -123,6 +123,7 @@ export class LlmJudge implements JudgeBackend, ChoiceBackend, RubricBackend {
   private readonly model: string;
   private readonly topLogprobs: number;
   private readonly allowHardLabels: boolean;
+  private readonly yesNoOrder: "yes-first" | "no-first";
   private readonly yesNo: (typeof YES_NO_PROMPTS)[keyof typeof YES_NO_PROMPTS];
   /** Set once the endpoint has proven it will not return logprobs. */
   private logprobsUnsupported = false;
@@ -139,7 +140,8 @@ export class LlmJudge implements JudgeBackend, ChoiceBackend, RubricBackend {
     this.model = options.model ?? process.env.AGENT_JUDGE_MODEL ?? "gpt-4o-mini";
     this.topLogprobs = options.topLogprobs ?? 5;
     this.allowHardLabels = options.allowHardLabels ?? false;
-    this.yesNo = YES_NO_PROMPTS[options.yesNoOrder ?? "yes-first"];
+    this.yesNoOrder = options.yesNoOrder ?? "yes-first";
+    this.yesNo = YES_NO_PROMPTS[this.yesNoOrder];
     this.name = `llm:${this.model}`;
     this.client = new OpenAI({ apiKey, ...(baseURL ? { baseURL } : {}) });
   }
@@ -261,10 +263,7 @@ export class LlmJudge implements JudgeBackend, ChoiceBackend, RubricBackend {
   }
 
   private async askOne(state: string, ask: string): Promise<{ probability: number; coverage?: number }> {
-    const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
-      { role: "system", content: this.yesNo.system },
-      { role: "user", content: `${state}\n\nQuestion: ${ask}\n${this.yesNo.answer}` },
-    ];
+    const messages = yesNoMessages(state, ask, this.yesNoOrder);
 
     const completion = await this.complete(messages);
     const choice = completion.choices[0];
@@ -417,8 +416,25 @@ function probabilityFromLogprobs(top: readonly { token: string; logprob: number 
   return { probability: yes / total, coverage: Math.min(1, total) };
 }
 
+/**
+ * The messages one yes/no question is asked with, from a state already
+ * rendered by `renderState`. Exported so that an eval can time exactly the
+ * prompt the gate sends (`eval/latency`).
+ */
+export function yesNoMessages(
+  renderedState: string,
+  ask: string,
+  order: "yes-first" | "no-first" = "yes-first",
+): OpenAI.Chat.ChatCompletionMessageParam[] {
+  const prompt = YES_NO_PROMPTS[order];
+  return [
+    { role: "system", content: prompt.system },
+    { role: "user", content: `${renderedState}\n\nQuestion: ${ask}\n${prompt.answer}` },
+  ];
+}
+
 /** `key: value` lines — short, ordered, and the same shape every time. */
-function renderState(state: JudgeState): string {
+export function renderState(state: JudgeState): string {
   return Object.entries(state)
     .map(([key, value]) => `${key}: ${value}`)
     .join("\n");

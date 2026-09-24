@@ -63,6 +63,7 @@ wrong first.
 | [What is not tested](#what-is-not-tested) | the endpoint survey, and which sets are burnt |
 | [What the router measures](#what-the-router-measures-and-what-it-cannot) | and why it is the weaker of the two |
 | [The order Y and N are named in](#the-order-y-and-n-are-named-in) | a tidy-looking edit that moved every score, and the self-check it led to |
+| [Where a decision's time goes](#where-a-decisions-time-goes) | one pass per question, a shared prefix, and slots that make it slower |
 
 ---
 
@@ -652,4 +653,60 @@ whose recorded scores a gate must still reproduce, within one unit of log-odds, 
 host trusts its threshold. The swapped order would fail that check at startup — its reads
 score 0.30, 0.41 and 0.27 where 0.013, 0.021 and 0.032 were recorded — while the shipped
 one, re-run, moved 0.01.
+
+---
+
+## Where a decision's time goes
+
+*2026-09-24, llama3.1:8b on Ollama 0.34.2, RTX 5080, `npm run eval:latency`.*
+
+The throughput eval found a ceiling of about forty decisions a second that parallel slots
+did not move, and the explanation offered for it — that the time goes into reading the
+prompt — was a reading of those numbers rather than a measurement. Ollama's native
+`/api/chat` reports `prompt_eval_duration` and `prompt_eval_count` beside the total, so
+`eval:latency` sends exactly the gate's prompts (`yesNoMessages` in `src/llm.ts`) there.
+
+One question at a time, about `wc -l src/agent.ts`:
+
+| question | client | server | reading the prompt | tokens |
+|---|---|---|---|---|
+| destroys-data | 28 ms | 25 ms | 19.0 ms | 85 |
+| outside-cwd | 25 ms | 23 ms | 17.5 ms | 94 |
+| exfiltrates | 28 ms | 26 ms | 20.1 ms | 109 |
+| reveals-secret | 26 ms | 26 ms | 18.5 ms | 103 |
+
+The four at once, as the gate sends them, on commands no slot has seen (median of six), on
+the server as installed and on a second instance started with `OLLAMA_NUM_PARALLEL=4`:
+
+| | as installed | four slots |
+|---|---|---|
+| short command | 89 ms; the four done at 29, 49, 67, 87 ms | 107 ms; all four at 105–106 ms |
+| 2,000 characters (823 tokens) | 278 ms; done at 212, 233, 254, 276 ms | 867 ms; done at 404, 628, 845, 866 ms |
+
+And the four asked one after another about the long command: the first read its 823
+tokens in 154 ms, the other three in 19, 21 and 19 ms (four slots: 152, then 20, 21, 20).
+
+What that says:
+
+- **A short question costs one pass, not its length.** 85 and 109 tokens both take 18–20 ms
+  to read; the rest of the server's 23–26 ms is its own overhead, and the round trip from
+  Node adds 1–3 ms more. Past a hundred tokens or so length takes over: 823 tokens, 154 ms.
+- **The gate's four questions queue.** As installed the server answers one request at a
+  time; the gate's `Promise.all` overlaps only the round trips. Four at once cost 89 ms,
+  about what four one after another cost.
+- **They share their start, and the server notices.** Every question renders the same
+  system prompt and the same command before its own question, so after the first has read
+  them the others read only their own tail — 20 ms instead of 154 on the long command.
+  That prompt order is what makes the long command affordable.
+- **Parallel slots undo it.** With four slots the four questions do run side by side, but
+  each slot keeps its own copy of what it has read, so the command is read four times over:
+  slower on a short command (107 ms against 89) and three times slower on a long one. That
+  is also consistent with the throughput ceiling: slots add places to read prompts, and
+  the reading is the work.
+
+So the next lever is not concurrency. It is a smaller model, which this has not measured,
+or a server that reads the shared part once and answers the four questions from it in one
+batch, which Ollama's per-slot caches do not do. The 200 ms first recorded for the gate's
+four questions, on 2026-09-21, is not what this machine does today; what changed in between
+has not been pinned down.
 
