@@ -1,8 +1,13 @@
 # Measuring the decision layer
 
-The working record behind two features in `src/judge/` — the risk gate and the model
+The working record behind two features in `src/` — the risk gate and the model
 router. It lives outside the README because it is long, and because most of it is the
 story of being wrong about something before measuring it.
+
+Both were built in, and still run in, [mini-claude-code](https://github.com/liu-x27/mini-claude-code)'s
+agent loop, which is where this record was kept until the decision layer moved out. The
+flags it mentions — `--gate`, `--gate-threshold`, `--cheap-model` — and the CLI that probes
+the judge at startup are that framework's; the evals and labelled sets are this repo's.
 
 The README says what the two of them do and what they score. This is how those numbers
 were arrived at: which thresholds were reasoned wrong and then measured right, which
@@ -31,8 +36,10 @@ column covers it at 4/55 with 0/70. Coverage reads 88%, 49%, 34% across dev, tes
 test 3 — the more unfamiliar the commands, the less it clears, which is the right
 direction for something that fails closed.
 
-Latency is 200ms mean, 205ms p95 for all four questions, on this machine's GPU, per tool
-call, on the `ask` path only.
+Latency is 93 ms mean, 100 ms p95 for all four questions over the dev set, on this
+machine's GPU (Ollama 0.34.2, 2026-09-24), per tool call, on the `ask` path only. It
+measured 200 ms mean and 205 ms p95 when these sets were first run, on 2026-09-21; what
+changed in between has not been pinned down.
 
 The router is **off by default** and stays off: 19% of requests labelled as needing the
 strong model get the cheap one, out of sample. `--cheap-model` opts in.
