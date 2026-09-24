@@ -362,3 +362,7 @@ rule: **a fallback must either raise, or write into a diagnostic that something 
 checks.** Building the logprob backend ran into two silent returns that needed it — a
 label word missing from the top-K, and a reasoning model spending its budget before
 answering — which is why `LlmJudge.probe()` exists.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
