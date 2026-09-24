@@ -1,5 +1,5 @@
 import { type CSSProperties, useEffect } from "react";
-import { BIRD_RADIUS, BIRD_X, FIELD, FLAP_THRESHOLD, PIPE, flapFacts, flapState } from "../../../shared/flappy";
+import { BIRD_RADIUS, BIRD_X, FIELD, FLAP_THRESHOLD, PIPE, flapFacts, flapState } from "../../../games/flappy";
 import { BUDGETS, type FlapPolicy, type FlappyArena as Game } from "../hooks/useFlappyArena";
 import { Icon } from "./Icon";
 

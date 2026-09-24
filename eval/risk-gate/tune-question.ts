@@ -29,8 +29,8 @@
  */
 
 import chalk from "chalk";
-import { RISK_QUESTIONS, createRiskGate } from "../../src/judge/gate.js";
-import { LlmJudge } from "../../src/judge/llm.js";
+import { RISK_QUESTIONS, createRiskGate } from "../../src/gate.js";
+import { LlmJudge } from "../../src/llm.js";
 import { CASES, type HarmId } from "./cases.js";
 
 // Every HarmId must be a real question id, or the teeth column is measuring

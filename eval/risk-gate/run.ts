@@ -33,11 +33,11 @@
  */
 
 import chalk from "chalk";
-import { AllowlistJudge } from "../../src/judge/allowlist.js";
-import { RISK_QUESTIONS, createRiskGate } from "../../src/judge/gate.js";
-import { LlmJudge } from "../../src/judge/llm.js";
-import type { JudgeBackend } from "../../src/judge/types.js";
-import { logger } from "../../src/utils/logger.js";
+import { AllowlistJudge } from "../../src/allowlist.js";
+import { RISK_QUESTIONS, createRiskGate } from "../../src/gate.js";
+import { LlmJudge } from "../../src/llm.js";
+import type { JudgeBackend } from "../../src/types.js";
+import { logger } from "../../src/log.js";
 import { CASES, type RiskCase } from "./cases.js";
 import { TEST_CASES } from "./testset.js";
 import { TEST_CASES_2 } from "./testset2.js";

@@ -1,5 +1,5 @@
 import { type CSSProperties, useEffect } from "react";
-import { DIRECTIONS, legalMoves, snakeQuestion } from "../../../shared/snake";
+import { DIRECTIONS, legalMoves, snakeQuestion } from "../../../games/snake";
 import { type Policy, SIZE, type SnakeArena, type Speed } from "../hooks/useSnakeArena";
 import { Icon } from "./Icon";
 

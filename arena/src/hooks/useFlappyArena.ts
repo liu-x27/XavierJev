@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FLAP_THRESHOLD, type Flight, forcedFlap, newFlight, ruleFlap, tick } from "../../../shared/flappy";
-import { seededRandom } from "../../../shared/snake";
+import { FLAP_THRESHOLD, type Flight, forcedFlap, newFlight, ruleFlap, tick } from "../../../games/flappy";
+import { seededRandom } from "../../../games/snake";
 
 /**
  * Flappy on a clock. Each tick has a budget; the judge's answer either comes

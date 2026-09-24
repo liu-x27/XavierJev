@@ -10,7 +10,7 @@
  *
  * Units are cells of a 24 × 16 field; y grows downwards.
  */
-import type { JudgeState, NoulQuestion } from "../src/judge/types.js";
+import type { JudgeState, NoulQuestion } from "../src/types.js";
 
 export const FIELD = { width: 24, height: 16 } as const;
 export const BIRD_X = 6;

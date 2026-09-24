@@ -16,7 +16,7 @@
  */
 
 import chalk from "chalk";
-import { LlmJudge } from "../../src/judge/llm.js";
+import { LlmJudge } from "../../src/llm.js";
 import {
   FLAP_QUESTION,
   FLAP_THRESHOLD,
@@ -26,8 +26,8 @@ import {
   newFlight,
   ruleFlap,
   tick,
-} from "../../shared/flappy.js";
-import { seededRandom } from "../../shared/snake.js";
+} from "../../games/flappy.js";
+import { seededRandom } from "../../games/snake.js";
 
 const arg = (name: string, fallback: string): string => {
   const i = process.argv.indexOf(`--${name}`);

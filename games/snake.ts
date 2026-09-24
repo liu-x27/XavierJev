@@ -12,7 +12,7 @@
  * decides it and the model is only offered the moves that survive. Which of
  * those to take is the part worth a model.
  */
-import type { ChoiceOption, JudgeState } from "../src/judge/types.js";
+import type { ChoiceOption, JudgeState } from "../src/types.js";
 
 export const DIRECTIONS = ["up", "down", "left", "right"] as const;
 export type Direction = (typeof DIRECTIONS)[number];

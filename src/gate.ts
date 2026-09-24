@@ -1,5 +1,5 @@
-import type { GateVerdict, PermissionRequest, RiskGate } from "../types.js";
-import { logger } from "../utils/logger.js";
+import type { GateVerdict, PermissionRequest, RiskGate } from "./decisions.js";
+import { logger } from "./log.js";
 import type { JudgeBackend, JudgeState, NoulQuestion } from "./types.js";
 
 /**

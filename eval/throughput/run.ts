@@ -17,8 +17,8 @@
 
 import chalk from "chalk";
 import { readFileSync, writeFileSync } from "node:fs";
-import { LlmJudge } from "../../src/judge/llm.js";
-import { type Board, newBoard, ruleMove, seededRandom, snakeQuestion, step } from "../../shared/snake.js";
+import { LlmJudge } from "../../src/llm.js";
+import { type Board, newBoard, ruleMove, seededRandom, snakeQuestion, step } from "../../games/snake.js";
 
 const arg = (name: string, fallback: string): string => {
   const i = process.argv.indexOf(`--${name}`);

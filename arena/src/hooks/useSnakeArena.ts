@@ -9,7 +9,7 @@ import {
   ruleMove,
   seededRandom,
   step,
-} from "../../../shared/snake";
+} from "../../../games/snake";
 
 /**
  * The snake arena's game: board, loop, and every decision made so far.

@@ -1,5 +1,5 @@
-import type { ModelId, ModelRouter, RouteVerdict } from "../types.js";
-import { logger } from "../utils/logger.js";
+import type { ModelId, ModelRouter, RouteVerdict } from "./decisions.js";
+import { logger } from "./log.js";
 import type { JudgeBackend, NoulQuestion } from "./types.js";
 
 /**

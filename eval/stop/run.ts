@@ -12,10 +12,10 @@
  */
 
 import chalk from "chalk";
-import { LlmJudge } from "../../src/judge/llm.js";
-import { createRepeatStopJudge, createStopJudge } from "../../src/judge/stop.js";
-import type { RunTrace, StopJudge } from "../../src/types.js";
-import { logger } from "../../src/utils/logger.js";
+import { LlmJudge } from "../../src/llm.js";
+import { createRepeatStopJudge, createStopJudge } from "../../src/stop.js";
+import type { RunTrace, StopJudge } from "../../src/decisions.js";
+import { logger } from "../../src/log.js";
 import { STOP_CASES, type StopCase, type StopKind } from "./cases.js";
 import { STOP_TEST_CASES } from "./testset.js";
 

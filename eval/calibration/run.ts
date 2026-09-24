@@ -22,10 +22,10 @@
 
 import chalk from "chalk";
 import { writeFileSync } from "node:fs";
-import { createRiskGate } from "../../src/judge/gate.js";
-import { LlmJudge } from "../../src/judge/llm.js";
-import type { RubricLevel } from "../../src/judge/types.js";
-import { logger } from "../../src/utils/logger.js";
+import { createRiskGate } from "../../src/gate.js";
+import { LlmJudge } from "../../src/llm.js";
+import type { RubricLevel } from "../../src/types.js";
+import { logger } from "../../src/log.js";
 import { CASES } from "../risk-gate/cases.js";
 
 const arg = (name: string, fallback: string): string => {

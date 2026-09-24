@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { logger } from "../utils/logger.js";
+import { logger } from "./log.js";
 import type {
   ChoiceBackend,
   ChoiceOption,

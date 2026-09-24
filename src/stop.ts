@@ -1,5 +1,5 @@
-import type { StopJudge, StopVerdict, TracedCall } from "../types.js";
-import { logger } from "../utils/logger.js";
+import type { StopJudge, StopVerdict, TracedCall } from "./decisions.js";
+import { logger } from "./log.js";
 import type { JudgeBackend, NoulQuestion } from "./types.js";
 
 /**
