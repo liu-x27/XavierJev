@@ -368,13 +368,18 @@ model, and around the fights the judgement calls (card rewards, the path, events
 is where `choice()` and `noul` are meant to go. Today those calls are hand-written rules,
 and nothing in spire-jev calls this package, so none of its numbers are the judge's.
 
-![Slay the Spire 2 at ascension 10: act 3's boss on floor 48, played by spire-jev's rules and search (3×)](docs/spire-jev-a10.gif)
+![Slay the Spire 2 at ascension 10, the last two floors: spire-jev beats Aeonglass, then dies to Test Subject (3×)](docs/spire-jev-a10-497.gif)
 
-*Ascension 10, seed 707, act 3's boss on floor 48 of 49, at 3×: the furthest of the 102
-seeds it was searched from, and not a win — it died on turn 8 with the Queen at 279 HP. On
-90 seeds kept for confirmation the current rules win no run either; they average floor 25
-and beat act 1's boss 71% of the time. The numbers, and how the recording is the same run
-as the headless one, are in spire-jev's README.*
+*Ascension 10, seed 497, floors 48 and 49 at 3×: one fight from a win, and not a win. The
+current rules beat act 3's first boss, Aeonglass, and died on the fourth turn against the
+second, Test Subject — the furthest of 90 seeds kept for confirmation, on which those rules
+win no run, average floor 25 and beat act 1's boss 71% of the time.*
+
+![Slay the Spire 2 at ascension 10: act 3's boss on floor 48, played by spire-jev's rules and search (3×)](docs/spire-jev-a10-707.gif)
+
+*Ascension 10, seed 707, act 3's boss on floor 48 at 3×, on older rules: the furthest of the
+102 seeds it was picked from; it died on turn 8 with the Queen at 279 HP. The numbers, and
+how a recording is the same run as the headless one, are in spire-jev's README.*
 
 ## How many a second
 
