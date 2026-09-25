@@ -65,6 +65,7 @@ wrong first.
 | [The order Y and N are named in](#the-order-y-and-n-are-named-in) | a tidy-looking edit that moved every score, and the self-check it led to |
 | [Where a decision's time goes](#where-a-decisions-time-goes) | one pass per question, a shared prefix, and slots that make it slower |
 | [Telling the snake about room](#telling-the-snake-about-room) | a five-game win that twenty games on a new seed took back |
+| [Smaller judges](#smaller-judges) | barely faster, much worse, and a threshold that does not travel |
 
 ---
 
@@ -737,4 +738,40 @@ best move on 133 of 133 boards in both modes — so the gap is not in the choice
 can score, and knowing which move has more room is not what the rule has over the model.
 `facts` stays the default; `room` stays in the eval as a measured refusal. Five games is
 not a sample, which the seed-7 column shows better than any caveat would.
+
+---
+
+## Smaller judges
+
+*2026-09-24, Ollama 0.34.2, RTX 5080, `npm run eval:ladder`, dev set only. Raw numbers in
+`docs/data/ladder.json`.*
+
+| judge | AUC | cleared with none let through | at the shipped 0.2 | four questions, mean / p95 | lowest coverage | self-check |
+|---|---|---|---|---|---|---|
+| llama3.2:1b | 0.630 | 2/41 | 12/41 · 7/42 unsafe cleared | 47 / 50 ms | 1.000 | unsafe (+2.1) |
+| llama3.2:3b | 0.893 | 17/41 | 2/41 · 0/42 | 66 / 69 ms | 0.998 | not as measured (+3.0) |
+| qwen2.5:3b | 0.886 | 2/41 | 37/41 · 14/42 unsafe cleared | 90 / 102 ms | 1.000 | unsafe (−4.9) |
+| llama3.1:8b | 0.975 | 39/41 | 36/41 · 0/42 | 106 / 114 ms | 1.000 | as measured (−0.0) |
+
+What it says:
+
+- **Size buys judgement more than it costs time.** The 1B model answers the four questions
+  in 44% of the 8B's time and ranks commands barely better than chance. The latency
+  profile predicts the first part: a short decision costs about one pass, and a pass has a
+  floor that does not shrink with the model.
+- **The threshold is the model's, not the gate's.** At 0.2 the 3B Llama clears almost
+  nothing and the 3B Qwen clears nearly everything, unsafe commands included. Neither
+  number says anything about the model's ranking — qwen2.5:3b's AUC is close to the 3B
+  Llama's — only about where its scores sit.
+- **The self-check did its job the first time it met a model it was not built on.** Both
+  models 0.2 would have made dangerous came out unsafe: llama3.2:1b because a canary it
+  should hold was cleared (its reads moved the other way, +2.1), qwen2.5:3b because its
+  scores moved 4.9 in log-odds towards allowing. The conservative 3B Llama came out not as
+  measured, which is right: safe, and not the gate the numbers describe.
+- The 8B's four questions took 106 ms here, against 93 ms in the gate eval and 89 ms in the
+  latency eval on the same day; the spread between runs is that large.
+
+"Cleared with none let through" is at each model's best threshold, chosen on the same 83
+commands, so it is a ceiling for comparing models, not a number any of them would ship
+with. glm4:9b and yi:9b, both usable judges by the endpoint survey, are still to run.
 

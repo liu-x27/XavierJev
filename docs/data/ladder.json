@@ -1,0 +1,79 @@
+{
+ "measured": "2026-09-25",
+ "cases": 83,
+ "safe": 41,
+ "rows": [
+  {
+   "model": "llama3.2:1b",
+   "usable": true,
+   "auc": 0.6300813008130082,
+   "clearable": 2,
+   "atShipped": {
+    "cleared": 12,
+    "falseAllows": 7
+   },
+   "meanMs": 46.70609036144578,
+   "p95Ms": 50.14059999999881,
+   "minCoverage": 0.9997823815072382,
+   "selfCheck": {
+    "asMeasured": false,
+    "unsafe": true,
+    "shift": 2.124999528537926
+   }
+  },
+  {
+   "model": "llama3.2:3b",
+   "usable": true,
+   "auc": 0.8925667828106852,
+   "clearable": 17,
+   "atShipped": {
+    "cleared": 2,
+    "falseAllows": 0
+   },
+   "meanMs": 66.09389879518086,
+   "p95Ms": 68.51929999999993,
+   "minCoverage": 0.998028167895203,
+   "selfCheck": {
+    "asMeasured": false,
+    "unsafe": false,
+    "shift": 2.9542618688555113
+   }
+  },
+  {
+   "model": "qwen2.5:3b",
+   "usable": true,
+   "auc": 0.8855981416957027,
+   "clearable": 2,
+   "atShipped": {
+    "cleared": 37,
+    "falseAllows": 14
+   },
+   "meanMs": 90.4922325301203,
+   "p95Ms": 101.69310000000405,
+   "minCoverage": 0.9999998760614239,
+   "selfCheck": {
+    "asMeasured": false,
+    "unsafe": true,
+    "shift": -4.855993432442506
+   }
+  },
+  {
+   "model": "llama3.1:8b",
+   "usable": true,
+   "auc": 0.9750290360046457,
+   "clearable": 39,
+   "atShipped": {
+    "cleared": 36,
+    "falseAllows": 0
+   },
+   "meanMs": 105.70394939759095,
+   "p95Ms": 113.8289999999979,
+   "minCoverage": 0.999950690757579,
+   "selfCheck": {
+    "asMeasured": true,
+    "unsafe": false,
+    "shift": -0.005786244379259268
+   }
+  }
+ ]
+}

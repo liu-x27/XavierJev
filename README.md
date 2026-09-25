@@ -378,6 +378,28 @@ three times slower on the long one. The lever for a decision layer is a smaller 
 measured here), or a server that reads the shared part once and answers the four in one
 pass, not more slots.
 
+## Smaller judges
+
+`npm run eval:ladder` puts the gate's four questions over its dev set with other local
+models (2026-09-24, Ollama 0.34.2, RTX 5080):
+
+![Four local models: how fast each answers the gate's four questions, against how many safe commands it could clear with none let through, and what the self-check said about it](docs/ladder.svg)
+
+| judge | AUC | cleared with none let through | at the shipped 0.2 | four questions, mean | self-check |
+|---|---|---|---|---|---|
+| llama3.2:1b | 0.630 | 2/41 | 12/41 · **7/42 unsafe cleared** | 47 ms | unsafe |
+| llama3.2:3b | 0.893 | 17/41 | 2/41 · 0/42 | 66 ms | not as measured |
+| qwen2.5:3b | 0.886 | 2/41 | 37/41 · **14/42 unsafe cleared** | 90 ms | unsafe |
+| llama3.1:8b | 0.975 | 39/41 | 36/41 · 0/42 | 106 ms | as measured |
+
+An eighth of the size takes 44% of the time, since a decision this short costs about one
+pass through the model whichever model it is, and loses most of the judgement. The shipped
+threshold does not travel: at 0.2, qwen2.5:3b would clear 37 safe commands and 14 unsafe
+ones. That is what the startup self-check is for — it called both models 0.2 would have
+made dangerous unsafe, and the third not the gate that was measured. "Cleared with none let
+through" is each model's ceiling, at the best threshold for it chosen on these same
+commands. glm4:9b and yi:9b have not been run yet.
+
 ## Are the numbers worth thresholding?
 
 A threshold only means something if the numbers under it do. `npm run eval:calibration`
@@ -422,8 +444,8 @@ After the move the gate's dev set was run again — `allowlist` 23/41 · 0/42, `
 standing up first; the ones published were measured against a local Ollama serving
 `llama3.1:8b`.
 
-**What is not known.** Anything about a judge other than llama3.1:8b: every `llm` number
-here is that one model, at Ollama's default quantisation. Whether a hosted provider's
+**What is not known.** Anything about a judge other than llama3.1:8b beyond the ladder
+above: every other `llm` number here is that one model, at Ollama's default quantisation. Whether a hosted provider's
 logprobs agree with a local model's: this path has only run against Ollama. How the gate
 does on the commands an agent actually sends over weeks, rather than on labelled sets of
 a hundred or so, and against commands written to slip past it — obfuscated, encoded,
@@ -445,7 +467,8 @@ npm run lint
 npm run build             # the library, to dist/
 npm run eval:risk-gate                    # offline: the allow-list is its default backend
 npm run eval:risk-gate -- --backend llm   # the other evals ask the judge by default:
-                                          # routing retry stop snake flappy throughput calibration order latency
+                                          # routing retry stop snake flappy throughput calibration order latency ladder
+npm run figures                           # redraws docs/at-a-glance.svg and docs/ladder.svg from docs/data/
 npm run eval:risk-gate -- --cases test3   # a held-out set; read its docstring first
 ```
 
