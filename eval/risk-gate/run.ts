@@ -191,9 +191,8 @@ if (options.cases !== "dev") {
     ),
   );
 
-  // How much of the test set is structurally new, by the same skeleton measure
-  // the distillation side uses: argv[0] plus the metacharacters and flags
-  // present. A test set that only varies arguments is a paraphrase of the dev
+  // How much of the test set is structurally new, by a command's skeleton:
+  // argv[0] plus the metacharacters and flags present. A test set that only varies arguments is a paraphrase of the dev
   // set, and would report a number the dev set already gave.
   const devSkeletons = new Set(CASES.map((c) => skeleton(c.command)));
   const exact = new Set(CASES.map((c) => c.command));
