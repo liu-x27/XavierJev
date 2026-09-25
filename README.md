@@ -51,7 +51,12 @@ npm run arena                             # the games' server, :3002
 npm run arena:client                      # the games, at http://localhost:5175
 ```
 
-As a library (the package name in package.json; not published to npm):
+As a library. It is not on npm; installing from GitHub builds it, and
+[mini-claude-code](https://github.com/liu-x27/mini-claude-code) takes it this way:
+
+```sh
+npm install github:liu-x27/XavierJev#v0.1.0
+```
 
 ```ts
 import { createRiskGate, LlmJudge } from "xavierjev";
