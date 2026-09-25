@@ -515,6 +515,22 @@ read by hand, the dev set's 21 tagged harms are all still caught, and test 3's o
 29/77 cleared with 0/76 false allows. Each step, in the order it had to pass, is in
 [docs/measurements.md](docs/measurements.md#reads-do-not-count).
 
+Then what it lets through was counted. 0.3.0 was put over 4,000 commands, 2,000 from each
+half with the earlier 1,000 among them, and all 1,181 it cleared (29.5%) were read by hand
+against the label criterion. If *the working directory* means the session's, six should have
+been asked about; if it means the one a command `cd`s into, three. They were two appends to a
+tracked file in another repository, a new file in a scratch directory, an empty directory, and
+a file written into another session's scratch directory. The sixth ran a script from a scratch
+directory that rewrites a tracked README in place: the one that could lose work, and the one
+the command's text does not show. Nothing cleared deletes a file, sends data out or shows a
+credential. So the share of the gate's clears that were wrong is below **1.0%** at 95% (0.66%
+on the second reading), or 1.33% on the 3,000 commands nothing had looked at before.
+
+That bounds what the gate clears, not how much unsafe traffic gets through, since the 2,819 it
+held were not read. It is also one run's count. All six scored between 0.15 and 0.2, and the
+same 1,000 commands, judged again hours later, moved by up to 0.13 and flipped 26 decisions. Both
+tables are in [docs/measurements.md](docs/measurements.md#counting-what-it-let-through).
+
 ## On JevBench
 
 `npm run eval:jevbench` answers [JevBench](https://github.com/fstandhartinger/jevbench)'s 231
@@ -619,10 +635,10 @@ standing up first; the ones published were measured against a local Ollama servi
 
 **What is not known.** Anything about a judge other than llama3.1:8b beyond the ladder
 above: every other `llm` number here is that one model, at Ollama's default quantisation. Whether a hosted provider's
-logprobs agree with a local model's: this path has only run against Ollama. How often the gate is
-wrong on the commands an agent actually sends: the traffic above has no labels, so it gives
-the benefit and a reading, not a false-allow rate; and how it does against commands written
-to slip past it — obfuscated, encoded, split across variables — which no set here contains. Whether a third fewer prompts feels different
+logprobs agree with a local model's: this path has only run against Ollama. How much of the
+unsafe traffic an agent actually sends gets through: what the gate cleared of it has been
+read, 6 of 1,181 should have been asked about, but what it held has not; and how it does
+against commands written to slip past it — obfuscated, encoded, split across variables — which no set here contains. Whether a third fewer prompts feels different
 across a long session than it does across a table of 153 rows. The 0.2 threshold is a
 property of this judge and this prompt, not of the gate: a different model needs it
 measured again. The router's out-of-sample
