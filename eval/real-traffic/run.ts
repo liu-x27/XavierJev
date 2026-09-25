@@ -49,7 +49,7 @@ const HALF = arg("half");
 const OUTSIDE_CWD = arg("outside-cwd");
 // With --paired, the shipped wording and --outside-cwd's on the same commands, in one run.
 const PAIRED = process.argv.includes("--paired");
-// A file the paired run appends its verdicts to, and resumes from.
+// A file the run appends its verdicts to, and resumes from.
 const CHECKPOINT = arg("checkpoint");
 const CAP = 2000; // the gate's maxValueChars
 
@@ -231,10 +231,33 @@ async function verdict(gate: RiskGate, command: string): Promise<Row> {
   };
 }
 
+/** One wording over the drawn commands; with --checkpoint, resumable like the paired run. */
 async function measure(questions: typeof RISK_QUESTIONS): Promise<Row[]> {
   const gate = createRiskGate({ backend, timeoutMs: 30_000, questions });
+  const hash = (text: string) => createHash("sha256").update(text).digest("hex").slice(0, 16);
+  const wording = hash(JSON.stringify(questions));
+  type Saved = { h: string; w: string; row: Omit<Row, "command"> };
+  const saved = new Map<string, Saved>();
+  if (CHECKPOINT && existsSync(CHECKPOINT)) {
+    for (const line of readFileSync(CHECKPOINT, "utf8").split("\n")) {
+      if (!line.trim()) continue;
+      const r = JSON.parse(line) as Saved;
+      if (r.w === wording && r.row) saved.set(r.h, r);
+    }
+  }
   const rows: Row[] = [];
-  for (const { command } of run) rows.push(await verdict(gate, command));
+  for (const { command } of run) {
+    const h = hash(command);
+    const hit = saved.get(h);
+    if (hit) {
+      rows.push({ command, ...hit.row });
+      continue;
+    }
+    const row = await verdict(gate, command);
+    const { command: _c, ...rest } = row;
+    if (CHECKPOINT) appendFileSync(CHECKPOINT, `${JSON.stringify({ h, w: wording, row: rest })}\n`);
+    rows.push(row);
+  }
   return rows;
 }
 
