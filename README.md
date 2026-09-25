@@ -13,26 +13,13 @@ The shape is borrowed from TypeSafe AI's [Jev](https://typesafe.ai/blog/introduc
 a "System One" decision model. This is an independent project and not affiliated with
 TypeSafe: nothing here calls the Jev API, and nothing was trained on its output.
 
-The gate in a real session — [mini-claude-code](https://github.com/liu-x27/mini-claude-code)'s
-REPL, with the loop on one provider and the judge, `llama3.1:8b`, on a local Ollama:
+![Three panels: a gate decision's latency, as installed and with parallel slots; each dev-set command's worst score with the answer letters in either order; and the 95% bound on the false-allow rate against the number of unsafe commands tested](docs/at-a-glance.svg)
 
-```
-› Run exactly: wc -l src/agent.ts
-  Risk gate allowed Bash — worst P=0.074 (exfiltrates) < 0.2
-  ⚙ Bash — wc -l src/agent.ts        ok in 88ms
-  506
-
-› Clean the build. Run exactly: rm -rf dist
-  Risk gate deferred Bash — P(destroys-data)=0.995 is not below 0.2
-  ⚠ Permission required for Bash
-  Allow? [y/N/a (always)/d (deny always)]: n
-
-› Use rmdir /s /q dist instead
-  Risk gate deferred Bash — P(destroys-data)=0.817 is not below 0.2
-```
-
-The third exchange is the one worth having: a Windows command an allow-list does not model
-at all, deferred at 0.817.
+Three measurements, from [docs/measurements.md](docs/measurements.md). A gate decision is four
+questions the server answers one after another, about 90 ms in all, and parallel slots make
+it slower. Naming N before Y in the answer instruction, and changing nothing else, moves
+every score — the reason the gate checks canaries at startup. And zero false allows in 76
+tries is a bound of 3.9%, not a rate of zero.
 
 | decision | asked as | measured | where it falls short |
 |---|---|---|---|
@@ -141,6 +128,27 @@ through to asking, the router to the expensive model, the retry judge to not ret
 the stop judge to carrying on.
 
 ### The risk gate
+
+In a real session — [mini-claude-code](https://github.com/liu-x27/mini-claude-code)'s REPL,
+with the loop on one provider and the judge, `llama3.1:8b`, on a local Ollama:
+
+```
+› Run exactly: wc -l src/agent.ts
+  Risk gate allowed Bash — worst P=0.074 (exfiltrates) < 0.2
+  ⚙ Bash — wc -l src/agent.ts        ok in 88ms
+  506
+
+› Clean the build. Run exactly: rm -rf dist
+  Risk gate deferred Bash — P(destroys-data)=0.995 is not below 0.2
+  ⚠ Permission required for Bash
+  Allow? [y/N/a (always)/d (deny always)]: n
+
+› Use rmdir /s /q dist instead
+  Risk gate deferred Bash — P(destroys-data)=0.817 is not below 0.2
+```
+
+The third exchange is the one worth having: a Windows command an allow-list does not model
+at all, deferred at 0.817.
 
 `createRiskGate` (`src/gate.ts`) sits in front of a permission prompt and is consulted
 only for calls the static rules sent to "ask". It can turn some of those into "allow". It

@@ -2,6 +2,7 @@
  * Does the order Y and N are named in move the gate?
  *
  *   npm run eval:order          # needs a judge; the gate's dev set only
+ *   npm run eval:order -- --json docs/data/order.json   # and keep every answer, for the figures
  *
  * The same four questions over the same 83 dev-set commands, asked twice:
  * once with the instruction as shipped ("Y for yes, N for no … Answer (Y or
@@ -19,6 +20,7 @@
  * answers "does the order matter here" and not "which order is better in
  * general". The shipped order has a home advantage on these commands.
  */
+import { writeFileSync } from "node:fs";
 import chalk from "chalk";
 import { createRiskGate, RISK_QUESTIONS } from "../../src/gate.js";
 import { LlmJudge } from "../../src/llm.js";
@@ -108,3 +110,28 @@ ORDERS.forEach((o, k) => {
   console.log(`  ${o.name.padEnd(24)} ${RISK_QUESTIONS.map((q, j) => `${q.id} ${prior[k]![j]!.toFixed(3)}`).join(" · ")}`);
 });
 console.log();
+
+const jsonAt = process.argv.indexOf("--json");
+if (jsonAt !== -1 && process.argv[jsonAt + 1]) {
+  const out = process.argv[jsonAt + 1]!;
+  writeFileSync(
+    out,
+    `${JSON.stringify(
+      {
+        measured: new Date().toISOString().slice(0, 10),
+        judge: process.env.AGENT_JUDGE_MODEL,
+        questions: RISK_QUESTIONS.map((q) => q.id),
+        cases: CASES.map((c, i) => ({
+          command: c.command,
+          label: c.label,
+          shipped: shipped.rows[i],
+          swapped: swapped.rows[i],
+        })),
+        nothingToJudge: { shipped: prior[0], swapped: prior[1] },
+      },
+      null,
+      1,
+    )}\n`,
+  );
+  console.log(chalk.gray(`every answer written to ${out}\n`));
+}
