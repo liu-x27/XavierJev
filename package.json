@@ -36,6 +36,7 @@
     "eval:calibration": "tsx eval/calibration/run.ts",
     "eval:order": "tsx eval/order/run.ts",
     "eval:stop": "tsx eval/stop/run.ts",
+    "eval:real-traffic": "tsx eval/real-traffic/run.ts",
     "lint": "biome lint src/ games/ test/ integrations/",
     "format": "biome format --write src/ games/ test/ integrations/"
   },

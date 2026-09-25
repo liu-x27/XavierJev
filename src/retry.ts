@@ -1,5 +1,6 @@
 import type { RetryJudge, RetryVerdict, ToolFailure } from "./decisions.js";
 import { logger } from "./log.js";
+import { positiveOption, probabilityOption } from "./options.js";
 import { type JudgeBackend, type NoulQuestion, usableProbability } from "./types.js";
 
 /**
@@ -83,9 +84,9 @@ export interface RetryJudgeOptions {
  */
 export function createRetryJudge(options: RetryJudgeOptions): RetryJudge {
   const { backend } = options;
-  const retryAt = options.retryAt ?? 0.6;
-  const timeoutMs = options.timeoutMs ?? 2000;
-  const maxErrorChars = options.maxErrorChars ?? 600;
+  const retryAt = probabilityOption("retryAt", options.retryAt ?? 0.6);
+  const timeoutMs = positiveOption("timeoutMs", options.timeoutMs ?? 2000);
+  const maxErrorChars = positiveOption("maxErrorChars", options.maxErrorChars ?? 600, true);
 
   return async (failure: ToolFailure): Promise<RetryVerdict> => {
     const started = Date.now();

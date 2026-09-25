@@ -1,5 +1,6 @@
 import type { StopJudge, StopVerdict, TracedCall } from "./decisions.js";
 import { logger } from "./log.js";
+import { positiveOption, probabilityOption } from "./options.js";
 import { type JudgeBackend, type NoulQuestion, usableProbability } from "./types.js";
 
 /**
@@ -37,7 +38,7 @@ export interface RepeatStopOptions {
  * finds this, and it cannot be wrong about what it compared.
  */
 export function createRepeatStopJudge(options: RepeatStopOptions = {}): StopJudge {
-  const repeats = options.repeats ?? 3;
+  const repeats = positiveOption("repeats", options.repeats ?? 3, true);
   return async (trace) => {
     const counts = new Map<string, { n: number; call: TracedCall }>();
     for (const c of trace.recent) {
@@ -93,9 +94,9 @@ export interface StopJudgeOptions {
  */
 export function createStopJudge(options: StopJudgeOptions): StopJudge {
   const { backend } = options;
-  const stopAt = options.stopAt ?? 0.8;
-  const minCalls = options.minCalls ?? 4;
-  const timeoutMs = options.timeoutMs ?? 2000;
+  const stopAt = probabilityOption("stopAt", options.stopAt ?? 0.8);
+  const minCalls = positiveOption("minCalls", options.minCalls ?? 4, true);
+  const timeoutMs = positiveOption("timeoutMs", options.timeoutMs ?? 2000);
 
   return async (trace): Promise<StopVerdict> => {
     if (trace.recent.length < minCalls) {

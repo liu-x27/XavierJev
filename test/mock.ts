@@ -706,17 +706,53 @@ const thinJudge = (probability: number, coverage: number): JudgeBackend => ({
   noul: async (_s, qs) => qs.map((q) => ({ id: q.id, probability, coverage })),
 });
 
-await checkAsync("coverage 不到一半的回答当作判断失败：闸门问用户、路由选强模型、不重试、不停", async () => {
-  const gate = await createRiskGate({ backend: thinJudge(0.01, 0.3) })(ls);
+await checkAsync("coverage 不到 0.95 的回答当作判断失败：闸门问用户、路由选强模型、不重试、不停", async () => {
+  const gate = await createRiskGate({ backend: thinJudge(0.01, 0.9) })(ls);
   if (gate.action !== "ask" || gate.probability !== undefined) throw new Error(`闸门: ${JSON.stringify(gate)}`);
-  const kept = await createRiskGate({ backend: thinJudge(0.01, 0.9) })(ls);
-  if (kept.action !== "allow" || kept.answers?.[0]?.coverage !== 0.9) throw new Error(`够的 coverage 应当照常放行: ${JSON.stringify(kept)}`);
+  const kept = await createRiskGate({ backend: thinJudge(0.01, 0.97) })(ls);
+  if (kept.action !== "allow" || kept.answers?.[0]?.coverage !== 0.97) throw new Error(`够的 coverage 应当照常放行: ${JSON.stringify(kept)}`);
   const route = await createModelRouter({ backend: thinJudge(0.01, 0.3), strong: "claude-opus-5", cheap: "claude-haiku-4-5" })("hi");
   if (route.model !== "claude-opus-5") throw new Error(`路由: ${route.model}`);
   const retry = await createRetryJudge({ backend: thinJudge(0.99, 0.3) })(outage);
   if (retry.retry) throw new Error("coverage 太低还重试了");
   const stop = await createStopJudge({ backend: thinJudge(0.99, 0.3) })({ prompt: "go", turn: 4, recent: [boom, boom, boom, boom] });
   if (stop.stop) throw new Error("coverage 太低还判停了");
+});
+
+await checkAsync("配置越界时构造就报错：阈值必须在 (0, 1) 之内，计数和超时必须是正数", async () => {
+  const judge = fakeJudge(0.5);
+  const bad: Array<[string, () => unknown]> = [
+    ["闸门阈值 1.5", () => createRiskGate({ backend: judge, autoAllowBelow: 1.5 })],
+    ["闸门阈值 0", () => createRiskGate({ backend: judge, autoAllowBelow: 0 })],
+    ["闸门阈值 NaN", () => createRiskGate({ backend: judge, autoAllowBelow: Number.NaN })],
+    ["拒绝线不高于放行线", () => createRiskGate({ backend: judge, autoAllowBelow: 0.3, denyAbove: 0.2 })],
+    ["超时为负", () => createRiskGate({ backend: judge, timeoutMs: -1 })],
+    ["路由阈值 1", () => createModelRouter({ backend: judge, strong: "s", cheap: "c", preferCheapBelow: 1 })],
+    ["重试阈值 -0.1", () => createRetryJudge({ backend: judge, retryAt: -0.1 })],
+    ["停止阈值 1", () => createStopJudge({ backend: judge, stopAt: 1 })],
+    ["最少调用 2.5", () => createStopJudge({ backend: judge, minCalls: 2.5 })],
+    ["重复次数 0", () => createRepeatStopJudge({ repeats: 0 })],
+  ];
+  for (const [label, build] of bad) {
+    let threw = false;
+    try {
+      build();
+    } catch (e) {
+      threw = e instanceof RangeError;
+    }
+    if (!threw) throw new Error(`${label} 应当在构造时报 RangeError`);
+  }
+  createRiskGate({ backend: judge, autoAllowBelow: 0.2, denyAbove: 0.99 });
+});
+
+await checkAsync("路由：请求长到判断器只能看到开头时，不问判断器，直接用强模型", async () => {
+  const judge = fakeJudge(0.01);
+  const asked = () => judge.calls;
+  const route = createModelRouter({ backend: judge, strong: "claude-opus-5", cheap: "claude-haiku-4-5" });
+  const long = await route(`fix this: ${"x".repeat(2100)}`);
+  if (long.model !== "claude-opus-5" || long.downgraded || asked() !== 0) throw new Error(`太长的请求: ${JSON.stringify(long)}, 问了 ${asked()} 次`);
+  const short = await route("rename this variable");
+  if (short.model !== "claude-haiku-4-5" || asked() !== 1) throw new Error(`放得下的请求照常判断: ${JSON.stringify(short)}`);
 });
 
 // ─────────────────────────────────────────────

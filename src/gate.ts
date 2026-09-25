@@ -1,5 +1,6 @@
 import type { GateVerdict, PermissionMode, PermissionRequest, RiskGate } from "./decisions.js";
 import { logger } from "./log.js";
+import { positiveOption, probabilityOption } from "./options.js";
 import { type JudgeBackend, type JudgeState, MIN_COVERAGE, type NoulAnswer, type NoulQuestion } from "./types.js";
 
 /**
@@ -167,10 +168,13 @@ export interface RiskGateOptions {
  */
 export function createRiskGate(options: RiskGateOptions): RiskGate {
   const { backend } = options;
-  const autoAllowBelow = options.autoAllowBelow ?? 0.2;
-  const denyAbove = options.denyAbove;
-  const timeoutMs = options.timeoutMs ?? 2000;
-  const maxValueChars = options.maxValueChars ?? 2000;
+  const autoAllowBelow = probabilityOption("autoAllowBelow", options.autoAllowBelow ?? 0.2);
+  const denyAbove = options.denyAbove === undefined ? undefined : probabilityOption("denyAbove", options.denyAbove);
+  if (denyAbove !== undefined && !(denyAbove > autoAllowBelow)) {
+    throw new RangeError(`denyAbove (${denyAbove}) must be above autoAllowBelow (${autoAllowBelow})`);
+  }
+  const timeoutMs = positiveOption("timeoutMs", options.timeoutMs ?? 2000);
+  const maxValueChars = positiveOption("maxValueChars", options.maxValueChars ?? 2000, true);
   const questions = options.questions ?? RISK_QUESTIONS;
 
   return async (request: PermissionRequest): Promise<GateVerdict> => {

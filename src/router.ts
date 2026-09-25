@@ -1,5 +1,6 @@
 import type { ModelId, ModelRouter, RouteVerdict } from "./decisions.js";
 import { logger } from "./log.js";
+import { positiveOption, probabilityOption } from "./options.js";
 import { type JudgeBackend, MIN_COVERAGE, type NoulAnswer, type NoulQuestion } from "./types.js";
 
 /**
@@ -49,7 +50,11 @@ export interface ModelRouterOptions {
   preferCheapBelow?: number;
   /** Fall back to `strong` if the judge takes longer than this. Default 2000ms. */
   timeoutMs?: number;
-  /** Cap on how much of the prompt is handed to the judge. Default 2000 chars. */
+  /**
+   * The longest prompt, in characters, the judge is shown. A longer one goes to
+   * `strong` without the judge being asked: a downgrade can only rest on what
+   * was read, and a long request is seldom the simple kind. Default 2000.
+   */
   maxPromptChars?: number;
 }
 
@@ -82,17 +87,16 @@ export interface ModelRouterOptions {
  */
 export function createModelRouter(options: ModelRouterOptions): ModelRouter {
   const { backend, strong, cheap } = options;
-  const preferCheapBelow = options.preferCheapBelow ?? 0.2;
-  const timeoutMs = options.timeoutMs ?? 2000;
-  const maxPromptChars = options.maxPromptChars ?? 2000;
+  const preferCheapBelow = probabilityOption("preferCheapBelow", options.preferCheapBelow ?? 0.2);
+  const timeoutMs = positiveOption("timeoutMs", options.timeoutMs ?? 2000);
+  const maxPromptChars = positiveOption("maxPromptChars", options.maxPromptChars ?? 2000, true);
 
   return async (prompt: string): Promise<RouteVerdict> => {
-    const state = {
-      request:
-        prompt.length > maxPromptChars
-          ? `${prompt.slice(0, maxPromptChars)}… (${prompt.length} chars total)`
-          : prompt,
-    };
+    if (prompt.length > maxPromptChars) {
+      const reason = `the request is ${prompt.length} characters, more than the ${maxPromptChars} the judge is shown`;
+      return { model: strong, downgraded: false, probability: undefined, reason };
+    }
+    const state = { request: prompt };
 
     let probability: number;
     try {

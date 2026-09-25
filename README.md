@@ -36,7 +36,7 @@ tries is a bound of 3.9%, not a rate of zero.
 
 ```bash
 npm install
-npm test                                        # 47 checks, mocked — no model, no key
+npm test                                        # 49 checks, mocked — no model, no key
 npm run eval:risk-gate                          # the gate's dev set, offline: the allow-list is its default
 ```
 
@@ -117,7 +117,7 @@ so the whole distribution comes out of one forward pass, and `coverage` says how
 that token's probability landed on the labels at all — a model that wanted to start a
 sentence instead should be visible as that, not as a confident renormalisation of what
 was left. `noul()` reports it too, as the share of the token on a yes or a no, and an
-answer with less than half (`MIN_COVERAGE`) counts as a judge failure in all four decisions
+answer with less than 95% of it (`MIN_COVERAGE`, a half before 0.2.0) counts as a judge failure in all four decisions
 below. llama3.1:8b has put all of it on Y or N on every call measured.
 
 `LlmJudge` (`src/llm.ts`) is the backend for all three. `AllowlistJudge` answers the risk
@@ -264,7 +264,9 @@ would have been good enough, which would need two outputs compared. Nearly four 
 error rate out of sample — and 7 of 37 is consistent with a true rate as high as 33% —
 and the reason is structural: a shell command carries its hazard
 on its face, while the difficulty of "optimize the database query performance" depends on
-a codebase the judge is never shown. It is behind a flag, not on by default.
+a codebase the judge is never shown. It is behind a flag, not on by default. A request
+longer than the 2,000 characters the judge is shown goes to the strong model unasked: a
+downgrade can only rest on what was read.
 
 ### Retrying a failed read — where a model lost
 
@@ -476,7 +478,7 @@ yes/no did.
 
 ## Status
 
-The mock suite — `npm test`, 47 checks, no model — covers the logic that would otherwise
+The mock suite — `npm test`, 49 checks, no model — covers the logic that would otherwise
 fail quietly: the gate's answers returned in question order and decided on the worst; the
 four ways each of the gate and the router can fail (a backend that throws, times out,
 skips a question, or answers outside [0, 1]) landing on asking and on the strong model; the
@@ -485,7 +487,9 @@ against a stand-in endpoint, renormalised with coverage beside them and an error
 than a guess when no label comes back; the snake and Flappy rules; the retry and stop
 judges' thresholds and failure directions; an answer with too little of its token on a yes
 or a no, refused by all four decisions; a command too long to show the judge whole, asked
-about without it; the gate's self-check, in both directions of
+about without it, and a request too long to show the router, sent to the strong model; a
+threshold outside (0, 1), a negative timeout or a fractional count, refused when a decision is
+built, since each would otherwise turn it silently into always or never; the gate's self-check, in both directions of
 drift; the answer order reaching the prompt; the Claude Code hook's allow, silence and
 abstentions; and the bounds `eval/stats.ts` puts beside a count.
 
@@ -514,7 +518,7 @@ the third has been read once.
 ## Development
 
 ```bash
-npm test                  # 47 checks, mocked
+npm test                  # 49 checks, mocked
 npm run typecheck         # src, games, eval, test and arena
 npm run lint
 npm run build             # the library, to dist/

@@ -59,8 +59,13 @@ export interface NoulAnswer {
  * as a judge failure and fall back the way each one fails. llama3.1:8b puts
  * all of it on Y or N (1.000 on every call measured); the limit is for a
  * model that does not.
+ *
+ * It was a half until 0.2.0, which let through an answer that was mostly
+ * something else. The usual advice for reading a decision off a label's
+ * logprob is that the labels should hold 95–99% of the token; the judge
+ * clears that with room to spare, so the stricter line costs it nothing.
  */
-export const MIN_COVERAGE = 0.5;
+export const MIN_COVERAGE = 0.95;
 
 /** A usable P(yes) from an answer: a probability in [0, 1] with enough of the token behind it. */
 export function usableProbability(answer: NoulAnswer | undefined): number | undefined {
