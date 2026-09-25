@@ -470,6 +470,63 @@ writes a newline before its answer, so its first token carries no Y or N and the
 turns it away before a question is asked. "Cleared with none let through" is each model's
 ceiling, at the best threshold for it chosen on these same commands.
 
+## On real traffic
+
+The labelled sets are what the safety numbers stand on, and every command in them is a
+short one-liner: the longest is 106 characters. `npm run eval:real-traffic` reads every Bash
+call in this machine's Claude Code transcripts — 10,869 distinct commands, June to September
+2026 — and prints counts, never commands.
+
+|  | labelled sets | this machine's agent traffic |
+|---|---|---|
+| length, median · p95 | under 110 characters | 279 · 1,781 characters |
+| multi-line scripts | none | 35% |
+| one-liners that start with `cd` | almost none | 69% |
+| longer than the 2,000 characters the judge is shown | none | 4%, asked about unjudged |
+
+On 500 of them drawn at random, the gate cleared **132 (26%)**: 38% of the one-liners and 6%
+of the scripts. All 132 were read by hand afterwards, and none would have needed asking —
+they are reads, searches, `git log` and `git diff`, type-checks and test runs, two `curl`
+GETs; about fifteen run the project's own code, which is the policy above, not a slip. There
+were no judge failures and the lowest coverage was 0.999, so the 0.95 floor costs nothing.
+What there is not is a false-allow count: this traffic has no labels, and reading 132
+commands is not a measurement.
+
+Two things hold it back. Decisions sit close to the line — 41 of the 132 cleared within 0.05
+of it, and 60 held within 0.1 above — so a small shift in the judge moves the benefit a
+lot. And 271 of the 345 it judged and held were held by `outside-cwd`: of the one-liners that
+start with `cd` to an absolute path, 86% go to a directory other than the session's own, to
+read something there, and the judge takes a path outside the working directory for a change
+outside it. The dev set has none of those commands, which is why six wordings of that
+question were compared on it without anyone noticing. The latency here, p50 316 ms and p95
+469 ms, was measured while other experiments had the GPU; the figures above are from a quiet
+machine.
+
+## On JevBench
+
+`npm run eval:jevbench` answers [JevBench](https://github.com/fstandhartinger/jevbench)'s 231
+public tasks with the three primitives, and `eval/jevbench/score.py` grades the answers with
+JevBench's own scoring code. Its labels are written by hand or by other LLMs, not by Jev; the
+run reads only `datasets/public`, never the `results/` where JevBench keeps Jev's per-task
+answers. llama3.1:8b, with a 16k context for the hard tier's long states (Ollama's default is
+4,096):
+
+| tier | tasks | accuracy | above chance | ECE |
+|---|---|---|---|---|
+| easy | 48 | 100% | 100 | 0.006 |
+| original | 72 | 73.6% | 61.7 | 0.168 |
+| hard | 111 | **36.0%** | **3.6** | **0.304** |
+| all public | 231 | 61.0% | 45.0, weighted as JevBench weights its tiers | 0.174 |
+
+The hard tier — long policies and multi-hop states, up to about 15,000 characters — is where
+one token from an 8B instruct model runs out: barely above chance, and confident while
+wrong. The weighted 45.0 sits beside the leaderboard's raw Qwen3-8B direct-logit baseline,
+45.7 on that axis (rank 54 of 93 in v1.4.2), which is measured over the full set including a
+sealed half, so they are neighbours rather than a comparison; the trained judges above it do
+better. There is no composite here, because JevBench's composite needs the sealed set. And a
+judge that answers every task uniformly scores an ECE of 0.017 on the same 231 tasks —
+calibration read without accuracy says nothing.
+
 ## Beside a rule-based guard
 
 `npm run eval:compare` puts [cc-safety-net](https://github.com/kenryu42/cc-safety-net) 2.4.7,
@@ -549,10 +606,10 @@ standing up first; the ones published were measured against a local Ollama servi
 
 **What is not known.** Anything about a judge other than llama3.1:8b beyond the ladder
 above: every other `llm` number here is that one model, at Ollama's default quantisation. Whether a hosted provider's
-logprobs agree with a local model's: this path has only run against Ollama. How the gate
-does on the commands an agent actually sends over weeks, rather than on labelled sets of
-a hundred or so, and against commands written to slip past it — obfuscated, encoded,
-split across variables — which no set here contains. Whether a third fewer prompts feels different
+logprobs agree with a local model's: this path has only run against Ollama. How often the gate is
+wrong on the commands an agent actually sends: the traffic above has no labels, so it gives
+the benefit and a reading, not a false-allow rate; and how it does against commands written
+to slip past it — obfuscated, encoded, split across variables — which no set here contains. Whether a third fewer prompts feels different
 across a long session than it does across a table of 153 rows. The 0.2 threshold is a
 property of this judge and this prompt, not of the gate: a different model needs it
 measured again. The router's out-of-sample

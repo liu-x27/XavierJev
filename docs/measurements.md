@@ -67,6 +67,8 @@ wrong first.
 | [Telling the snake about room](#telling-the-snake-about-room) | a five-game win that twenty games on a new seed took back |
 | [Smaller judges](#smaller-judges) | barely faster, much worse, and a threshold that does not travel |
 | [Beside a rule-based guard](#beside-a-rule-based-guard) | opposite failures: one misses most harm, the other most of the benefit |
+| [On real traffic](#on-real-traffic) | a quarter cleared, all of it harmless on reading, held back by one question |
+| [On JevBench](#on-jevbench) | easy solved, hard at chance and confident |
 
 ---
 
@@ -823,4 +825,57 @@ heredoc that matched a rule; those reads are not labelled, so there is no rate t
 The comparison reads the held-out sets, so each one's log records it, and nothing in the gate
 was chosen on it. dcg is not measured: its licence withholds rights from Anthropic and anyone
 acting for it, benchmarking included, and these measurements are made with Claude Code.
+
+---
+
+## On real traffic
+
+*2026-09-25, `npm run eval:real-traffic -- --backend llm --half A --sample 500 --paired …`,
+llama3.1:8b at 0.2. Aggregates in `docs/data/real-traffic.json`; the commands stay on the machine.*
+
+The shape of the traffic, over all 10,869 distinct commands: median length
+279 characters, p95 1,781, longest 19,435;
+3,824 multi-line; 4,826 of 7,045
+one-liners start with `cd`; 435 are longer than the judge is shown. Of the
+one-liners whose `cd` names an absolute path, 86.5% go outside the session's own directory
+(`eval:real-traffic` prints the count; it needs each record's working directory, which the
+transcripts carry).
+
+The gate on 500 drawn by seed 20260925 from half A of a hash split:
+
+| | count |
+|---|---|
+| cleared | 132 of 500 — one-liners 121/316, scripts 11/184 |
+| held, by the question that held it | outside-cwd 271, exfiltrates 62, destroys-data 7, reveals-secret 5 |
+| asked about unjudged, too long to show | 23 |
+| cleared within 0.05 of the line · held within 0.1 above it | 41 · 60 |
+| judge failures · lowest coverage | 0 · 0.999 |
+
+All 132 cleared commands were read by hand. None needed asking under the label
+criterion; about fifteen run the project's own code (tests, a type-check, a local inspection
+tool), which the gate judges by the command's text. This is not a labelled result, and there
+is no false-allow rate to report from it.
+
+---
+
+## On JevBench
+
+*2026-09-25, `npm run eval:jevbench` and `eval/jevbench/score.py`, llama3.1:8b behind an
+Ollama model with `num_ctx 16384`. Aggregates in `docs/data/jevbench.json`.*
+
+The three primitives map onto JevBench's three task types directly: a `noul` task to `noul()`
+with its two criteria in the question, a `choice` task to `choice()`, a `score` task to
+`rubric()`. No task has more than six options or five levels, inside what the primitives take.
+Every answer put all of its first token on a label.
+
+| tier | tasks | accuracy | above chance | ECE | Brier |
+|---|---|---|---|---|---|
+| easy | 48 | 1.000 | 100.0 | 0.006 | 0.000 |
+| original | 72 | 0.736 | 61.7 | 0.168 | 0.432 |
+| hard | 111 | 0.360 | 3.6 | 0.304 | 0.799 |
+| all public | 231 | 0.610 | 45.0 weighted | 0.174 | 0.519 |
+
+A uniform answer to every task, for reference: accuracy 0.320, ECE 0.017, weighted above
+chance 1.3. The leaderboard's raw Qwen3-8B direct-logit baseline is 45.7 on the intelligence
+axis in v1.4.2 (rank 54 of 93), over public and sealed tasks together.
 

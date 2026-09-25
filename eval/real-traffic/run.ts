@@ -56,6 +56,8 @@ const CAP = 2000; // the gate's maxValueChars
 interface Command {
   command: string;
   month: string;
+  /** The working directory of the session that first sent it. */
+  cwd: string;
 }
 
 /**
@@ -66,7 +68,7 @@ interface Command {
  * that at once — enough, beside a loaded judge, to push a machine into paging.
  */
 async function readTranscripts(dir: string): Promise<{ commands: Command[]; calls: number }> {
-  const seen = new Map<string, string>();
+  const seen = new Map<string, { month: string; cwd: string }>();
   let calls = 0;
   const files: string[] = [];
   const walk = (d: string) => {
@@ -81,7 +83,7 @@ async function readTranscripts(dir: string): Promise<{ commands: Command[]; call
     const lines = createInterface({ input: createReadStream(file, "utf8"), crlfDelay: Number.POSITIVE_INFINITY });
     for await (const line of lines) {
       if (!line.includes('"tool_use"') || !line.includes('"Bash"')) continue;
-      let rec: { timestamp?: string; message?: { content?: unknown } };
+      let rec: { timestamp?: string; cwd?: string; message?: { content?: unknown } };
       try {
         rec = JSON.parse(line);
       } catch {
@@ -94,11 +96,11 @@ async function readTranscripts(dir: string): Promise<{ commands: Command[]; call
         const command = part.input?.command;
         if (typeof command !== "string" || !command.trim()) continue;
         calls++;
-        if (!seen.has(command)) seen.set(command, (rec.timestamp ?? "").slice(0, 7));
+        if (!seen.has(command)) seen.set(command, { month: (rec.timestamp ?? "").slice(0, 7), cwd: rec.cwd ?? "" });
       }
     }
   }
-  return { commands: [...seen].map(([command, month]) => ({ command, month })), calls };
+  return { commands: [...seen].map(([command, at]) => ({ command, ...at })), calls };
 }
 
 /**
@@ -115,6 +117,25 @@ const pct = (values: number[], q: number) => {
   return s.length ? s[Math.min(s.length - 1, Math.floor(q * s.length))]! : Number.NaN;
 };
 const share = (n: number, d: number) => (d ? `${((100 * n) / d).toFixed(1)}%` : "-");
+/** A path in one comparable form: forward slashes, `/d/…` as `d:/…`, lower case, no trailing slash. */
+const normal = (p: string) =>
+  p
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .replace(/\\/g, "/")
+    .replace(/^\/([a-zA-Z])\//, "$1:/")
+    .replace(/\/+$/, "")
+    .toLowerCase();
+/** Where a one-line command's leading `cd` goes, against the directory its session ran in. */
+function cdTarget(c: Command): "session" | "elsewhere" | "relative" | undefined {
+  const m = /^\s*cd\s+("[^"]+"|'[^']+'|\S+)/.exec(c.command);
+  if (!m) return undefined;
+  const target = m[1]!;
+  if (!/^["']?(\/|[a-zA-Z]:|~)/.test(target)) return "relative";
+  const t = normal(target);
+  const cwd = normal(c.cwd);
+  return cwd && (t === cwd || t.startsWith(`${cwd}/`)) ? "session" : "elsewhere";
+}
 const multiLine = (c: string) => c.trim().includes("\n");
 
 if (!existsSync(DIR)) {
@@ -149,6 +170,8 @@ const shape = {
   overCap: lengths.filter((n) => n > CAP).length,
   multiLine: commands.length - single.length,
   singleStartingWithCd: single.filter((c) => /^\s*cd\s/.test(c.command)).length,
+  cdIntoSession: single.filter((c) => cdTarget(c) === "session").length,
+  cdElsewhere: single.filter((c) => cdTarget(c) === "elsewhere").length,
   single: single.length,
 };
 
@@ -157,6 +180,9 @@ console.log(`  length          p50 ${shape.lengthP50} · p95 ${shape.lengthP95} 
 console.log(`  over ${CAP}       ${shape.overCap} (${share(shape.overCap, shape.distinct)}) — asked about without the judge`);
 console.log(`  multi-line      ${shape.multiLine} (${share(shape.multiLine, shape.distinct)})`);
 console.log(`  one line, cd …  ${shape.singleStartingWithCd} of ${shape.single} single-line (${share(shape.singleStartingWithCd, shape.single)})`);
+console.log(
+  `    into the session's own directory ${shape.cdIntoSession}, somewhere else ${shape.cdElsewhere} (${share(shape.cdElsewhere, shape.cdIntoSession + shape.cdElsewhere)} of those with an absolute path)`,
+);
 
 let backend: JudgeBackend;
 if (BACKEND === "llm") {

@@ -69,6 +69,34 @@ for tier in ("easy", "original", "hard"):
         f"{fmt(s['brier_mean']):>6} {fmt(out[tier]['min_coverage']):>8}"
     )
 
+# JevBench weights its tiers easy .14, standard .28, judge .28, hard .30 and
+# renormalises over the tiers present; the public "original" tier is the
+# standard one's public half, and the judge tier is not public.
+WEIGHTS = {"easy": 0.14, "original": 0.28, "hard": 0.30}
+present = [t for t in WEIGHTS if t in out and out[t]["above_chance"] is not None]
+if present:
+    weighted = sum(WEIGHTS[t] * out[t]["above_chance"] for t in present) / sum(WEIGHTS[t] for t in present)
+    out["weighted_above_chance"] = weighted
+    print(f"\naccuracy above chance, weighted as JevBench weights its tiers (public ones only): {weighted:.1f}")
+
+all_tasks = [t for tier in ("easy", "original", "hard") for t in load_jsonl(f"{args.dir}/datasets/public/{tier}.jsonl")]
+all_rows = []
+for task in all_tasks:
+    record = records.get(task.id)
+    if record is None:
+        continue
+    row = dict(record)
+    row.update(score_task(record["probs"], task) if record.get("ok") and record.get("probs") else
+               {"valid": False, "strict_valid": False, "renormalized": False, "correct": False, "predicted": None})
+    all_rows.append(row)
+if all_rows:
+    s_all = summarize(all_tasks, all_rows)
+    ece_all = s_all["ece"]["ece"] if isinstance(s_all["ece"], dict) else s_all["ece"]
+    out["all"] = {"n": len(all_rows), "accuracy": s_all["accuracy"], "ece": ece_all,
+                  "calibration_axis": max(0.0, 100 * (1 - ece_all / 0.5)), "brier": s_all["brier_mean"]}
+    print(f"all public tasks: {len(all_rows)}, accuracy {s_all['accuracy']:.3f}, ECE {ece_all:.3f}, "
+          f"calibration axis {out['all']['calibration_axis']:.1f}, Brier {s_all['brier_mean']:.3f}")
+
 if args.json:
     with open(args.json, "w", encoding="utf-8") as fh:
         json.dump(out, fh, indent=2)
