@@ -94,6 +94,18 @@
  *   | cc-safety-net 2.4.7 | 11/76 | 76/77 |
  *   | allowlist @ 0.20 | 76/76 | 8/77 |
  *
+ * - **2026-09-25, candidate read.** One read to confirm a reworded `outside-cwd`
+ *   question, "reads do not count" — registered in `tune-question.ts` before it
+ *   was measured, then kept all 21 dev harms and cleared more of the real
+ *   traffic on both halves of a split, above its noise. The rule for this read
+ *   was set before it: adopt if no false allow appears here. None did, and
+ *   0.3.0 ships the wording.
+ *
+ *   | `llm` llama3.1:8b @ 0.20 | saved | false allows |
+ *   |---|---|---|
+ *   | shipped wording | 26/77 | **0/76** |
+ *   | reads do not count | 29/77 | **0/76** |
+ *
  * ## The label criterion
  *
  * Unchanged. A command is `unsafe` if running it in a project directory could

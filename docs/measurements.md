@@ -69,6 +69,7 @@ wrong first.
 | [Beside a rule-based guard](#beside-a-rule-based-guard) | opposite failures: one misses most harm, the other most of the benefit |
 | [On real traffic](#on-real-traffic) | a quarter cleared, all of it harmless on reading, held back by one question |
 | [On JevBench](#on-jevbench) | easy solved, hard at chance and confident |
+| [Reads do not count](#reads-do-not-count) | the first wording chosen on real traffic, registered before it was measured |
 
 ---
 
@@ -802,7 +803,7 @@ with.
 
 *2026-09-25, `npm run eval:compare`, cc-safety-net 2.4.7 with its `checkCommand` defaults and
 a fresh empty directory as the working directory. Strings only. The `llm` rows are the logged
-runs at the shipped 0.2, not new reads.*
+runs at the shipped 0.2 from before 0.3.0, not new reads; 0.3.0's wording gives test 3 76/76 · 29/77.*
 
 | set | cc-safety-net: unsafe stopped · safe passed | `allowlist` gate | `llm` gate |
 |---|---|---|---|
@@ -878,4 +879,42 @@ Every answer put all of its first token on a label.
 A uniform answer to every task, for reference: accuracy 0.320, ECE 0.017, weighted above
 chance 1.3. The leaderboard's raw Qwen3-8B direct-logit baseline is 45.7 on the intelligence
 axis in v1.4.2 (rank 54 of 93), over public and sealed tasks together.
+
+---
+
+## Reads do not count
+
+*2026-09-25, llama3.1:8b at 0.2. Adopted in 0.3.0.*
+
+Real traffic showed `outside-cwd` holding most of the commands an agent sends, most of them
+reads in another repository (see [On real traffic](#on-real-traffic)); the dev set, on which
+six rewordings of that question had been compared, contains no such command. So one wording
+was written down in `tune-question.ts` before anything measured it — the shipped question
+with one sentence added, *"Reading, listing or searching files does not count."* — and it had
+to pass every step below, in this order, or be dropped.
+
+| step | shipped wording | reads do not count |
+|---|---|---|
+| dev set, the question alone: safe blocked · tagged harms missed · teeth | 4/41 · 0/21 · 0.841 | 5/41 · **0/21** · 0.861 |
+| dev set, the gate: cleared · false allows | 35/41 · 0/42 | 35/41 · **0/42** |
+| real traffic, half A, 500 drawn: cleared | 132 | 150 (23 newly cleared, 5 newly held) |
+| noise: the shipped wording against itself on the same 500 | 136 | 139 (3 flips, all one way) |
+| real traffic, half B, 500 drawn: cleared | 115 | 139 (28 newly cleared, 4 newly held) |
+| test 3, held out, one read: cleared · false allows | 26/77 · 0/76 | 29/77 · **0/76** |
+
+Under the new wording the gate's self-check reports its canaries as recorded, their scores
+moved +0.14 in log-odds towards asking — inside its limit of 1, so the values recorded for the
+old wording stand. Every command either half newly cleared — 51 in all — was read by hand: all reads, listings
+and searches, a `tasklist`, a `git fetch`. The gain, 18 and 24 commands in 500, is six to
+eight times the run-to-run noise measured on the same draw. That noise is its own finding:
+the same question on the same command comes back a few hundredths apart between runs — the
+likeliest cause is what the prefix cache holds when the request arrives, which this does not
+test — so a decision within 0.03 of the line can go either way on a rerun.
+
+The cost is on the other side of the ledger: 9 commands the shipped wording cleared are held
+by the new one, and the dev set's one extra block. The history of this question is also a
+caution against reading too much into the shape of the fix. "Carve out in-tree", a sentence
+of exactly this kind, made the dev set five times worse; this one was chosen by traffic the
+dev set cannot see, and only a second, labelled set of agent-shaped commands would say how
+far it generalises.
 

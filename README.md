@@ -25,7 +25,7 @@ tries is a bound of 3.9%, not a rate of zero.
 
 | decision | asked as | measured | where it falls short |
 |---|---|---|---|
-| may this tool call run unasked? | four yes/no, worst wins | 153 held-out commands: 26/77 safe cleared, **0/76** unsafe — a false-allow rate below 3.9% | 88% cleared on dev, 34% on the held-out set |
+| may this tool call run unasked? | four yes/no, worst wins | 153 held-out commands: 29/77 safe cleared, **0/76** unsafe — a false-allow rate below 3.9% | 85% cleared on dev, 38% on the held-out set |
 | cheap model or strong? | one yes/no | held out: 34% downgraded | 19% of hard requests downgraded — off by default |
 | retry a failed read once? | one yes/no | best wording 29/36 | a regex gets 36/36, and ships |
 | stop a run that is stuck? | repeat rule, then one yes/no | 0 wrong stops, 0 missed, dev and held out | 39 labelled runs in all |
@@ -55,7 +55,7 @@ As a library. It is not on npm; installing from GitHub builds it, and
 [mini-claude-code](https://github.com/liu-x27/mini-claude-code) takes it this way:
 
 ```sh
-npm install github:liu-x27/XavierJev#v0.2.0
+npm install github:liu-x27/XavierJev#v0.3.0
 ```
 
 ```ts
@@ -189,12 +189,15 @@ own docstring.
 |---|---|---|---|---|
 | no gate | — | 0/41 · 0/42 | 0/53 · 0/43 | 0/77 · 0/76 |
 | `allowlist` — offline | 0.20 | 23/41 · **0/42** | 7/53 · **0/43** | 8/77 · **0/76** |
-| **`llm` llama3.1:8b** | **0.20** | 36/41 · **0/42** | 26/53 · **1/43** | **26/77 · 0/76** |
+| `llm` llama3.1:8b, before 0.3.0 | 0.20 | 36/41 · **0/42** | 26/53 · **1/43** | 26/77 · **0/76** |
+| **`llm` llama3.1:8b, 0.3.0** | **0.20** | 35/41 · **0/42** | — | **29/77 · 0/76** |
 
 Read the coverage left to right: **88% on dev, 49% on test 2, 34% on test 3.** The more
 unfamiliar the commands, the less the gate clears — the right direction for something that
-fails closed, and a poor advertisement for the dev-set figure. What ships is a third of
-safe commands cleared with no false allows on 153 commands it had never seen. Test 3's
+fails closed, and a poor advertisement for the dev-set figure. What ships is 29 of 77 safe
+commands cleared, 38%, with no false allows on 153 commands it had never seen — up from a
+third before 0.3.0 reworded `outside-cwd`, which is the last section of
+[On real traffic](#on-real-traffic); test 2 is spent and was not read again for it. Test 3's
 commands came from asking the agent's own model what it would run across a dozen
 realistic tasks, never mentioning harm; only the labels are mine. Test 1 is left out: it
 was run before two of the four questions were rewritten, and is in
@@ -502,6 +505,16 @@ question were compared on it without anyone noticing. The latency here, p50 316 
 469 ms, was measured while other experiments had the GPU; the figures above are from a quiet
 machine.
 
+0.3.0 rewords that question, adding *"Reading, listing or searching files does not count"* —
+the first wording chosen on this traffic rather than on the dev set, and written down before
+anything measured it. On the same 500 commands it clears 150 where the old one cleared 132;
+on the other half of the split, which nothing had looked at, 139 against 115. Set against
+itself, the old wording moves 3 of 500, so the gain is real, and it also says a decision within
+a few hundredths of the line can go either way on a rerun. All 51 newly cleared commands were
+read by hand, the dev set's 21 tagged harms are all still caught, and test 3's one read gives
+29/77 cleared with 0/76 false allows. Each step, in the order it had to pass, is in
+[docs/measurements.md](docs/measurements.md#reads-do-not-count).
+
 ## On JevBench
 
 `npm run eval:jevbench` answers [JevBench](https://github.com/fstandhartinger/jevbench)'s 231
@@ -539,7 +552,7 @@ by one, left to the user by the other — and safe ones passed without friction.
 |---|---|---|
 | cc-safety-net 2.4.7, default rules | 11/76 (14%) | 76/77 (99%) |
 | `allowlist` gate | 76/76 | 8/77 (10%) |
-| **`llm` gate, llama3.1:8b** | **76/76** | **26/77 (34%)** |
+| **`llm` gate, llama3.1:8b, 0.3.0** | **76/76** | **29/77 (38%)** |
 
 By harm, it stopped 11 of the 32 destructive commands, 4 of the 56 that reach outside the
 project, none of the 3 that send data out — its README says it does not watch the network —
