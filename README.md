@@ -36,7 +36,7 @@ tries is a bound of 3.9%, not a rate of zero.
 
 ```bash
 npm install
-npm test                                        # 46 checks, mocked — no model, no key
+npm test                                        # 47 checks, mocked — no model, no key
 npm run eval:risk-gate                          # the gate's dev set, offline: the allow-list is its default
 ```
 
@@ -171,6 +171,12 @@ reporting that everything is fine. It cannot close a well-formed answer that is 
 score below the threshold on something destructive auto-allows it, and no prompt appears
 to correct it — which is why false allows are counted apart, why one of them fails an
 eval run, and why no mock can stand in for that column.
+
+**So does a command too long to show whole.** The judge is shown at most 2,000 characters
+of any input (`maxValueChars`), and a call with a longer one is asked about without the
+judge being consulted: a clearance can only cover what was read, and the end of a long
+script is where a cut would hide anything. No labelled command below is longer than 106
+characters, so no number here moves.
 
 `npm run eval:risk-gate` puts hand-labelled shell commands through the gate and reports
 **prompts saved** — safe commands cleared without asking — and **false allows**. There are
@@ -470,7 +476,7 @@ yes/no did.
 
 ## Status
 
-The mock suite — `npm test`, 46 checks, no model — covers the logic that would otherwise
+The mock suite — `npm test`, 47 checks, no model — covers the logic that would otherwise
 fail quietly: the gate's answers returned in question order and decided on the worst; the
 four ways each of the gate and the router can fail (a backend that throws, times out,
 skips a question, or answers outside [0, 1]) landing on asking and on the strong model; the
@@ -478,7 +484,8 @@ allow-list's rejections, including the two it once let through; `choice()` and `
 against a stand-in endpoint, renormalised with coverage beside them and an error rather
 than a guess when no label comes back; the snake and Flappy rules; the retry and stop
 judges' thresholds and failure directions; an answer with too little of its token on a yes
-or a no, refused by all four decisions; the gate's self-check, in both directions of
+or a no, refused by all four decisions; a command too long to show the judge whole, asked
+about without it; the gate's self-check, in both directions of
 drift; the answer order reaching the prompt; the Claude Code hook's allow, silence and
 abstentions; and the bounds `eval/stats.ts` puts beside a count.
 
@@ -507,7 +514,7 @@ the third has been read once.
 ## Development
 
 ```bash
-npm test                  # 46 checks, mocked
+npm test                  # 47 checks, mocked
 npm run typecheck         # src, games, eval, test and arena
 npm run lint
 npm run build             # the library, to dist/

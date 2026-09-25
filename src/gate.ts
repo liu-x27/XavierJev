@@ -131,7 +131,11 @@ export interface RiskGateOptions {
   /** Fall through to the human if the backend takes longer than this. Default 2000ms. */
   timeoutMs?: number;
 
-  /** Cap on the length of any single state value handed to the backend. Default 2000. */
+  /**
+   * The longest input value, in characters, the judge is shown. A call with a
+   * longer one goes to the user without the judge being asked, since what the
+   * judge would not see is exactly what its answer could not cover. Default 2000.
+   */
   maxValueChars?: number;
 
   /**
@@ -170,7 +174,15 @@ export function createRiskGate(options: RiskGateOptions): RiskGate {
   const questions = options.questions ?? RISK_QUESTIONS;
 
   return async (request: PermissionRequest): Promise<GateVerdict> => {
-    const state = buildState(request, maxValueChars);
+    // Shown only its start, a judge can clear what it read and never see the
+    // rest: the tail of a long script is where a cut would hide anything.
+    const long = tooLong(request, maxValueChars);
+    if (long) {
+      const reason = `${long.key} is ${long.length} characters, more than the ${maxValueChars} the judge is shown`;
+      return { action: "ask", probability: undefined, reason, threshold: autoAllowBelow };
+    }
+
+    const state = buildState(request);
     const started = Date.now();
 
     let answers: { id: string; probability: number }[];
@@ -222,19 +234,27 @@ export function createRiskGate(options: RiskGateOptions): RiskGate {
  * `tool.summarize(input)`, so including it would repeat the input in a second
  * format and buy nothing but tokens and a longer state to get distracted by.
  */
-function buildState(request: PermissionRequest, maxValueChars: number): JudgeState {
+function buildState(request: PermissionRequest): JudgeState {
   const state: JudgeState = { tool: request.toolName };
 
   for (const [key, value] of Object.entries(request.input)) {
     if (value === undefined || value === null) continue;
-    const rendered = typeof value === "string" ? value : JSON.stringify(value);
-    state[key] =
-      rendered.length > maxValueChars
-        ? `${rendered.slice(0, maxValueChars)}… (${rendered.length} chars total)`
-        : rendered;
+    state[key] = render(value);
   }
 
   return state;
+}
+
+const render = (value: unknown): string => (typeof value === "string" ? value : JSON.stringify(value));
+
+/** The first input value too long to show the judge whole, if there is one. */
+function tooLong(request: PermissionRequest, maxValueChars: number): { key: string; length: number } | undefined {
+  for (const [key, value] of Object.entries(request.input)) {
+    if (value === undefined || value === null) continue;
+    const { length } = render(value);
+    if (length > maxValueChars) return { key, length };
+  }
+  return undefined;
 }
 
 /**

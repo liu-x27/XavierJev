@@ -181,6 +181,19 @@ for (const [label, backend] of failingBackends) {
   });
 }
 
+await checkAsync("命令长到判断器只能看到开头时，不问判断器，直接问用户", async () => {
+  // 判断器只看到前 2000 个字符的话，它的"安全"管不到被截掉的部分，
+  // 而长脚本的末尾恰好是截断能藏东西的地方。
+  const judge = fakeJudge(0.01);
+  const gate = createRiskGate({ backend: judge });
+  const asked = () => judge.calls;
+  const long = await gate({ toolName: "Bash", input: { command: `echo ${"a".repeat(2100)}` }, description: "echo" });
+  if (long.action !== "ask" || long.probability !== undefined) throw new Error(`太长的命令不能放行: ${JSON.stringify(long)}`);
+  if (asked() !== 0) throw new Error(`不该去问判断器: ${asked()} 次`);
+  const fits = await gate({ toolName: "Bash", input: { command: `echo ${"a".repeat(1900)}` }, description: "echo" });
+  if (fits.action !== "allow" || asked() !== 1) throw new Error(`放得下的命令照常判断: ${fits.action}, ${asked()} 次`);
+});
+
 await checkAsync("默认阈值是 0.2", async () => {
   // 0.2 是 llama3.1:8b 在两个标注集上都零漏放的最高值。这条测试不是为了
   // 锁死这个数字，而是为了让"换判断器却没重测阈值"变成一次测试失败。
