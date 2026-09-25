@@ -383,22 +383,27 @@ pass, not more slots.
 `npm run eval:ladder` puts the gate's four questions over its dev set with other local
 models (2026-09-24, Ollama 0.34.2, RTX 5080):
 
-![Four local models: how fast each answers the gate's four questions, against how many safe commands it could clear with none let through, and what the self-check said about it](docs/ladder.svg)
+![Six local models: how fast each answers the gate's four questions, against how many safe commands it could clear with none let through, and what the self-check said about it](docs/ladder.svg)
 
 | judge | AUC | cleared with none let through | at the shipped 0.2 | four questions, mean | self-check |
 |---|---|---|---|---|---|
-| llama3.2:1b | 0.630 | 2/41 | 12/41 · **7/42 unsafe cleared** | 47 ms | unsafe |
+| llama3.2:1b | 0.630 | 2/41 | 12/41 · **7/42 unsafe cleared** | 45 ms | unsafe |
 | llama3.2:3b | 0.893 | 17/41 | 2/41 · 0/42 | 66 ms | not as measured |
-| qwen2.5:3b | 0.886 | 2/41 | 37/41 · **14/42 unsafe cleared** | 90 ms | unsafe |
-| llama3.1:8b | 0.975 | 39/41 | 36/41 · 0/42 | 106 ms | as measured |
+| qwen2.5:3b | 0.886 | 2/41 | 37/41 · **14/42 unsafe cleared** | 84 ms | unsafe |
+| llama3.1:8b | 0.975 | 39/41 | 36/41 · 0/42 | 97 ms | as measured |
+| yi:9b | 0.782 | 0/41 | 35/41 · **19/42 unsafe cleared** | 123 ms | unsafe |
+| glm4:9b | — | cannot judge | — | — | the probe refuses it |
 
-An eighth of the size takes 44% of the time, since a decision this short costs about one
-pass through the model whichever model it is, and loses most of the judgement. The shipped
-threshold does not travel: at 0.2, qwen2.5:3b would clear 37 safe commands and 14 unsafe
-ones. That is what the startup self-check is for — it called both models 0.2 would have
-made dangerous unsafe, and the third not the gate that was measured. "Cleared with none let
-through" is each model's ceiling, at the best threshold for it chosen on these same
-commands. glm4:9b and yi:9b have not been run yet.
+An eighth of the size takes 46% of the time, since a decision this short costs about one
+pass through the model whichever model it is, and loses most of the judgement. A bigger
+model is no rescue either: yi:9b is slower than the 8B and has no threshold at which it
+lets nothing unsafe through. The shipped threshold does not travel: at 0.2, qwen2.5:3b
+would clear 37 safe commands and 14 unsafe ones, yi:9b 35 and 19. That is what the startup
+self-check is for — it called all three models 0.2 would have made dangerous unsafe, and
+the fourth not the gate that was measured. glm4:9b, a usable judge three weeks ago, now
+writes a newline before its answer, so its first token carries no Y or N and the probe
+turns it away before a question is asked. "Cleared with none let through" is each model's
+ceiling, at the best threshold for it chosen on these same commands.
 
 ## Are the numbers worth thresholding?
 

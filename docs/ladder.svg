@@ -1,44 +1,46 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 344" font-family="ui-monospace, Menlo, Consolas, monospace" font-size="11" role="img" aria-labelledby="t d">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 366" font-family="ui-monospace, Menlo, Consolas, monospace" font-size="11" role="img" aria-labelledby="t d">
 <title id="t">The gate on judges of different sizes</title>
-<desc id="d">llama3.2:1b: 47 ms, 2 of 41 safe commands clearable with none let through; llama3.2:3b: 66 ms, 17 of 41 safe commands clearable with none let through; qwen2.5:3b: 90 ms, 2 of 41 safe commands clearable with none let through; llama3.1:8b: 106 ms, 39 of 41 safe commands clearable with none let through.</desc>
-<rect width="640" height="344" rx="10" fill="#0f1013"/>
-<text x="24.0" y="34.0" fill="#ecedee" font-size="13">Smaller judges are barely faster, and much worse</text>
+<desc id="d">llama3.2:1b: 45 ms, 2 of 41 clearable with none let through, self-check unsafe; llama3.2:3b: 66 ms, 17 of 41 clearable with none let through, self-check not as measured; qwen2.5:3b: 84 ms, 2 of 41 clearable with none let through, self-check unsafe; llama3.1:8b: 97 ms, 39 of 41 clearable with none let through, self-check as measured; yi:9b: 123 ms, 0 of 41 clearable with none let through, self-check unsafe; glm4:9b cannot judge.</desc>
+<rect width="640" height="366" rx="10" fill="#0f1013"/>
+<text x="24.0" y="34.0" fill="#ecedee" font-size="13">Smaller judges are barely faster, and bigger is not better</text>
 <text x="24.0" y="52.0" fill="#9096a0" >the gate's four questions over its 83-command dev set, one local model each</text>
-<line x1="64" x2="612" y1="272" y2="272" stroke="#1e2127"/>
-<text x="56.0" y="276.0" fill="#9096a0" text-anchor="end">0</text>
-<line x1="64" x2="612" y1="228.09756097560975" y2="228.09756097560975" stroke="#1e2127"/>
-<text x="56.0" y="232.1" fill="#9096a0" text-anchor="end">10</text>
-<line x1="64" x2="612" y1="184.1951219512195" y2="184.1951219512195" stroke="#1e2127"/>
-<text x="56.0" y="188.2" fill="#9096a0" text-anchor="end">20</text>
-<line x1="64" x2="612" y1="140.29268292682926" y2="140.29268292682926" stroke="#1e2127"/>
-<text x="56.0" y="144.3" fill="#9096a0" text-anchor="end">30</text>
+<text x="24.0" y="76.0" fill="#9096a0" >safe commands cleared with none let through ↑</text>
+<line x1="64" x2="612" y1="262" y2="262" stroke="#1e2127"/>
+<text x="56.0" y="266.0" fill="#9096a0" text-anchor="end">0</text>
+<line x1="64" x2="612" y1="220.53658536585365" y2="220.53658536585365" stroke="#1e2127"/>
+<text x="56.0" y="224.5" fill="#9096a0" text-anchor="end">10</text>
+<line x1="64" x2="612" y1="179.0731707317073" y2="179.0731707317073" stroke="#1e2127"/>
+<text x="56.0" y="183.1" fill="#9096a0" text-anchor="end">20</text>
+<line x1="64" x2="612" y1="137.609756097561" y2="137.609756097561" stroke="#1e2127"/>
+<text x="56.0" y="141.6" fill="#9096a0" text-anchor="end">30</text>
 <line x1="64" x2="612" y1="92" y2="92" stroke="#1e2127"/>
 <text x="56.0" y="96.0" fill="#9096a0" text-anchor="end">41</text>
-<text x="64.0" y="288.0" fill="#9096a0" text-anchor="middle">0</text>
-<text x="142.3" y="288.0" fill="#9096a0" text-anchor="middle">20</text>
-<text x="220.6" y="288.0" fill="#9096a0" text-anchor="middle">40</text>
-<text x="298.9" y="288.0" fill="#9096a0" text-anchor="middle">60</text>
-<text x="377.1" y="288.0" fill="#9096a0" text-anchor="middle">80</text>
-<text x="455.4" y="288.0" fill="#9096a0" text-anchor="middle">100</text>
-<text x="533.7" y="288.0" fill="#9096a0" text-anchor="middle">120</text>
-<text x="612.0" y="288.0" fill="#9096a0" text-anchor="middle">140</text>
-<text x="338.0" y="306.0" fill="#9096a0" text-anchor="middle">ms for the four questions (mean) →</text>
-<text x="24.0" y="76.0" fill="#9096a0" >safe commands cleared with none let through ↑</text>
-<circle cx="246.8" cy="263.2" r="5" fill="#3987e5" stroke="#0f1013" stroke-width="2"/>
-<text x="236.8" y="229.2" fill="#ecedee" text-anchor="end">llama3.2:1b</text>
-<text x="236.8" y="242.2" fill="#9096a0" text-anchor="end">self-check: unsafe</text>
-<text x="236.8" y="255.2" fill="#9096a0" text-anchor="end">0.2 lets 7 unsafe through</text>
-<circle cx="322.7" cy="197.4" r="5" fill="#3987e5" stroke="#0f1013" stroke-width="2"/>
-<text x="332.7" y="163.4" fill="#ecedee" >llama3.2:3b</text>
-<text x="332.7" y="176.4" fill="#9096a0" >self-check: not as measured</text>
-<text x="332.7" y="189.4" fill="#9096a0" >0.2 lets none through</text>
-<circle cx="418.2" cy="263.2" r="5" fill="#3987e5" stroke="#0f1013" stroke-width="2"/>
-<text x="428.2" y="229.2" fill="#ecedee" >qwen2.5:3b</text>
-<text x="428.2" y="242.2" fill="#9096a0" >self-check: unsafe</text>
-<text x="428.2" y="255.2" fill="#9096a0" >0.2 lets 14 unsafe through</text>
-<circle cx="477.8" cy="100.8" r="5" fill="#3987e5" stroke="#0f1013" stroke-width="2"/>
-<text x="467.8" y="116.8" fill="#ecedee" text-anchor="end">llama3.1:8b</text>
-<text x="467.8" y="129.8" fill="#9096a0" text-anchor="end">self-check: as measured</text>
-<text x="467.8" y="142.8" fill="#9096a0" text-anchor="end">0.2 lets none through</text>
-<text x="24.0" y="330.0" fill="#5b616b" >clearable is at each model's best threshold, chosen on these same commands: a ceiling, not a result</text>
+<text x="64.0" y="278.0" fill="#9096a0" text-anchor="middle">0</text>
+<text x="132.5" y="278.0" fill="#9096a0" text-anchor="middle">20</text>
+<text x="201.0" y="278.0" fill="#9096a0" text-anchor="middle">40</text>
+<text x="269.5" y="278.0" fill="#9096a0" text-anchor="middle">60</text>
+<text x="338.0" y="278.0" fill="#9096a0" text-anchor="middle">80</text>
+<text x="406.5" y="278.0" fill="#9096a0" text-anchor="middle">100</text>
+<text x="475.0" y="278.0" fill="#9096a0" text-anchor="middle">120</text>
+<text x="543.5" y="278.0" fill="#9096a0" text-anchor="middle">140</text>
+<text x="612.0" y="278.0" fill="#9096a0" text-anchor="middle">160</text>
+<text x="338.0" y="296.0" fill="#9096a0" text-anchor="middle">ms for the four questions (mean) →</text>
+<circle cx="219.5" cy="253.7" r="5" fill="#d95926" stroke="#0f1013" stroke-width="2"/>
+<text x="227.5" y="244.7" fill="#ecedee" >llama3.2:1b</text>
+<circle cx="290.9" cy="191.5" r="4.5" fill="#0f1013" stroke="#3987e5" stroke-width="2"/>
+<text x="298.9" y="182.5" fill="#ecedee" >llama3.2:3b</text>
+<circle cx="353.0" cy="253.7" r="5" fill="#d95926" stroke="#0f1013" stroke-width="2"/>
+<text x="361.0" y="244.7" fill="#ecedee" >qwen2.5:3b</text>
+<circle cx="397.6" cy="100.3" r="5" fill="#3987e5" stroke="#0f1013" stroke-width="2"/>
+<text x="405.6" y="91.3" fill="#ecedee" >llama3.1:8b</text>
+<circle cx="483.7" cy="262.0" r="5" fill="#d95926" stroke="#0f1013" stroke-width="2"/>
+<text x="491.7" y="253.0" fill="#ecedee" >yi:9b</text>
+<circle cx="30" cy="312" r="5" fill="#3987e5"/>
+<text x="40.0" y="316.0" fill="#9096a0" >self-check: as measured</text>
+<circle cx="210" cy="312" r="4.5" fill="#0f1013" stroke="#3987e5" stroke-width="2"/>
+<text x="220.0" y="316.0" fill="#9096a0" >not as measured</text>
+<circle cx="354" cy="312" r="5" fill="#d95926"/>
+<text x="364.0" y="316.0" fill="#9096a0" >unsafe — would clear unsafe commands</text>
+<text x="24.0" y="336.0" fill="#5b616b" >cleared is at each model's best threshold, chosen on these same commands: a ceiling, not a result</text>
+<text x="24.0" y="352.0" fill="#5b616b" >glm4:9b: cannot judge (its first token is not Y or N)</text>
 </svg>

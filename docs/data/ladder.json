@@ -12,8 +12,8 @@
     "cleared": 12,
     "falseAllows": 7
    },
-   "meanMs": 46.70609036144578,
-   "p95Ms": 50.14059999999881,
+   "meanMs": 45.413965060240976,
+   "p95Ms": 48.265300000000025,
    "minCoverage": 0.9997823815072382,
    "selfCheck": {
     "asMeasured": false,
@@ -30,8 +30,8 @@
     "cleared": 2,
     "falseAllows": 0
    },
-   "meanMs": 66.09389879518086,
-   "p95Ms": 68.51929999999993,
+   "meanMs": 66.25108915662663,
+   "p95Ms": 69.058500000001,
    "minCoverage": 0.998028167895203,
    "selfCheck": {
     "asMeasured": false,
@@ -48,8 +48,8 @@
     "cleared": 37,
     "falseAllows": 14
    },
-   "meanMs": 90.4922325301203,
-   "p95Ms": 101.69310000000405,
+   "meanMs": 84.37840120481957,
+   "p95Ms": 89.32280000000173,
    "minCoverage": 0.9999998760614239,
    "selfCheck": {
     "asMeasured": false,
@@ -66,13 +66,36 @@
     "cleared": 36,
     "falseAllows": 0
    },
-   "meanMs": 105.70394939759095,
-   "p95Ms": 113.8289999999979,
+   "meanMs": 97.38833734939763,
+   "p95Ms": 105.44249999999738,
    "minCoverage": 0.999950690757579,
    "selfCheck": {
     "asMeasured": true,
     "unsafe": false,
     "shift": -0.005786244379259268
+   }
+  },
+  {
+   "model": "glm4:9b",
+   "usable": false,
+   "detail": "5 top logprobs returned"
+  },
+  {
+   "model": "yi:9b",
+   "usable": true,
+   "auc": 0.7822299651567944,
+   "clearable": 0,
+   "atShipped": {
+    "cleared": 35,
+    "falseAllows": 19
+   },
+   "meanMs": 122.55392650602398,
+   "p95Ms": 141.46119999999792,
+   "minCoverage": 0.9775005993456745,
+   "selfCheck": {
+    "asMeasured": false,
+    "unsafe": true,
+    "shift": 0.9428081425237921
    }
   }
  ]

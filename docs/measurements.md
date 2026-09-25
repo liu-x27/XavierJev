@@ -490,7 +490,7 @@ looking:
 
 | endpoint | logprobs | first token | usable |
 |---|---|---|---|
-| Ollama `/v1`, llama3.1:8b · yi:9b · glm4:9b | yes | `Y` | yes |
+| Ollama `/v1`, llama3.1:8b · yi:9b · glm4:9b | yes | `Y` | yes — glm4:9b no longer, see [Smaller judges](#smaller-judges) |
 | Ollama `/v1`, qwen3:4b | yes | `<think>` | no — no label word in the top 5 |
 | Ollama `/v1`, qwen3:0.6b · qwen3:14b | no | — | no |
 | MiniMax `/v1`, MiniMax-Text-01 · abab6.5s-chat | no | `Y` | hard labels only |
@@ -748,30 +748,48 @@ not a sample, which the seed-7 column shows better than any caveat would.
 
 | judge | AUC | cleared with none let through | at the shipped 0.2 | four questions, mean / p95 | lowest coverage | self-check |
 |---|---|---|---|---|---|---|
-| llama3.2:1b | 0.630 | 2/41 | 12/41 · 7/42 unsafe cleared | 47 / 50 ms | 1.000 | unsafe (+2.1) |
+| llama3.2:1b | 0.630 | 2/41 | 12/41 · 7/42 unsafe cleared | 45 / 48 ms | 1.000 | unsafe (+2.1) |
 | llama3.2:3b | 0.893 | 17/41 | 2/41 · 0/42 | 66 / 69 ms | 0.998 | not as measured (+3.0) |
-| qwen2.5:3b | 0.886 | 2/41 | 37/41 · 14/42 unsafe cleared | 90 / 102 ms | 1.000 | unsafe (−4.9) |
-| llama3.1:8b | 0.975 | 39/41 | 36/41 · 0/42 | 106 / 114 ms | 1.000 | as measured (−0.0) |
+| qwen2.5:3b | 0.886 | 2/41 | 37/41 · 14/42 unsafe cleared | 84 / 89 ms | 1.000 | unsafe (−4.9) |
+| llama3.1:8b | 0.975 | 39/41 | 36/41 · 0/42 | 97 / 105 ms | 1.000 | as measured (−0.0) |
+| yi:9b | 0.782 | 0/41 | 35/41 · 19/42 unsafe cleared | 123 / 141 ms | 0.978 | unsafe (+0.9) |
+| glm4:9b | — | cannot judge | — | — | — | — |
+
+The self-check column is the verdict and the mean log-odds shift of the canaries, positive
+towards asking.
 
 What it says:
 
 - **Size buys judgement more than it costs time.** The 1B model answers the four questions
-  in 44% of the 8B's time and ranks commands barely better than chance. The latency
+  in 46% of the 8B's time and ranks commands barely better than chance. The latency
   profile predicts the first part: a short decision costs about one pass, and a pass has a
   floor that does not shrink with the model.
 - **The threshold is the model's, not the gate's.** At 0.2 the 3B Llama clears almost
   nothing and the 3B Qwen clears nearly everything, unsafe commands included. Neither
   number says anything about the model's ranking — qwen2.5:3b's AUC is close to the 3B
   Llama's — only about where its scores sit.
-- **The self-check did its job the first time it met a model it was not built on.** Both
-  models 0.2 would have made dangerous came out unsafe: llama3.2:1b because a canary it
-  should hold was cleared (its reads moved the other way, +2.1), qwen2.5:3b because its
-  scores moved 4.9 in log-odds towards allowing. The conservative 3B Llama came out not as
-  measured, which is right: safe, and not the gate the numbers describe.
-- The 8B's four questions took 106 ms here, against 93 ms in the gate eval and 89 ms in the
-  latency eval on the same day; the spread between runs is that large.
+- **Bigger is not better either.** yi:9b is the slowest judge here and the only one with
+  no threshold at which nothing unsafe gets through, which the earlier threshold sweep
+  found too. Its coverage is the lowest (0.978), still well above the floor.
+- **The self-check did its job the first time it met a model it was not built on.** All
+  three models 0.2 would have made dangerous came out unsafe: llama3.2:1b and yi:9b
+  because a canary they should hold was cleared (their reads moved the other way, +2.1 and
+  +0.9), qwen2.5:3b because its scores moved 4.9 in log-odds towards allowing. The
+  conservative 3B Llama came out not as measured, which is right: safe, and not the gate
+  the numbers describe.
+- **glm4:9b stopped being a judge without changing.** The endpoint survey above had its
+  first token as `Y`, and the gate eval measured it at 32/41 · 0/42. Three weeks later the
+  same model file, on Ollama 0.34.2, answers `"\nY"`: a newline at P=1.0 first, the label
+  second, on `/v1` and on the native `/api/chat` alike. That Ollama builds its prompt
+  from the model's own Jinja template, which ends at `<|assistant|>`, and the model
+  supplies the line break itself; what rendered it differently before is not known. With `max_tokens: 1` the answer is never read, so `probe()`
+  refuses the model before the eval asks anything. Any change to the serving stack is a
+  new judge, and this is one that would otherwise have failed silently.
+- The 8B's four questions took 97 ms here, against 93 ms in the gate eval, 89 ms in the
+  latency eval and 106 ms in the first ladder run the same day; the spread between runs
+  is that large.
 
 "Cleared with none let through" is at each model's best threshold, chosen on the same 83
 commands, so it is a ceiling for comparing models, not a number any of them would ship
-with. glm4:9b and yi:9b, both usable judges by the endpoint survey, are still to run.
+with.
 
