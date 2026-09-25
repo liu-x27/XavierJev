@@ -245,6 +245,22 @@ have nothing in common — the move that fixed one made another five times worse
 no phrasing rule to carry forward, which is the argument for the harness rather than for
 any wording it produced. [docs/measurements.md](docs/measurements.md) has the rest.
 
+**What it judges.** The words of a command, not what they run. `npm test` or
+`node scripts/migrate.js` is scored on that text, and whatever the script does is out of
+its sight; under the label criterion, running the project's own code in the working
+directory is safe. Someone who wants those asked about writes an ask rule, which the gate
+is never consulted on.
+
+**What it does not defend against.** It is built for an agent that means well and is
+sometimes careless — the wrong directory under `rm -rf`, a key pasted into a command. It
+is not built to hold against an agent working against the user, or a command written to
+be misread: no labelled set here contains one, and nothing here measures it. For
+comparison, [a red-team study](https://arxiv.org/abs/2609.19587) of Claude Code's auto
+mode and Codex's Guardian, classifiers far larger than this one, reports agents getting
+arbitrary bash past them with injection attacks in 79% of trials. A local 8B judge reading
+one token should be assumed weaker. Against that threat the answer is a sandbox, not a
+gate.
+
 ### The router
 
 `createModelRouter` (`src/router.ts`) asks one question about the user's prompt before
