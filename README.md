@@ -360,6 +360,22 @@ llama3.1:8b reads one fact well and does not combine two: asked over both, it go
 six combinations right, and one it got wrong was fatal. A flap that would crash is the
 rule's call, as a wall is for the snake.
 
+**Slay the Spire 2** is where this is meant to go next, and it is not there yet.
+[spire-jev](https://github.com/liu-x27/spire-jev) plays the real game — Ironclad, whole runs,
+ascension 10, no human input — in the same shape: a simulator and a search for the order
+to play each hand, since a search that looks at thousands of states has no room for a
+model, and around the fights the judgement calls (card rewards, the path, events), which
+is where `choice()` and `noul` are meant to go. Today those calls are hand-written rules,
+and nothing in spire-jev calls this package, so none of its numbers are the judge's.
+
+![Slay the Spire 2 at ascension 10: act 3's boss on floor 48, played by spire-jev's rules and search (3×)](docs/spire-jev-a10.gif)
+
+*Ascension 10, seed 707, act 3's boss on floor 48 of 49, at 3×: the furthest of the 102
+seeds it was searched from, and not a win — it died on turn 8 with the Queen at 279 HP. On
+90 seeds kept for confirmation the current rules win no run either; they average floor 25
+and beat act 1's boss 71% of the time. The numbers, and how the recording is the same run
+as the headless one, are in spire-jev's README.*
+
 ## How many a second
 
 `npm run eval:throughput`: *c* callers, each sending its next snake question the moment
