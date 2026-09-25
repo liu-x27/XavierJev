@@ -1,5 +1,7 @@
 # XavierJev
 
+[![ci](https://github.com/liu-x27/XavierJev/actions/workflows/ci.yml/badge.svg)](https://github.com/liu-x27/XavierJev/actions/workflows/ci.yml)
+
 An agent loop is full of small decisions nobody wants to wait for or read a paragraph
 about: may this command run without asking, which model should take this request, is this
 error worth one more try, is this run going anywhere. XavierJev answers them as typed
