@@ -66,6 +66,7 @@ wrong first.
 | [Where a decision's time goes](#where-a-decisions-time-goes) | one pass per question, a shared prefix, and slots that make it slower |
 | [Telling the snake about room](#telling-the-snake-about-room) | a five-game win that twenty games on a new seed took back |
 | [Smaller judges](#smaller-judges) | barely faster, much worse, and a threshold that does not travel |
+| [Beside a rule-based guard](#beside-a-rule-based-guard) | opposite failures: one misses most harm, the other most of the benefit |
 
 ---
 
@@ -792,4 +793,34 @@ What it says:
 "Cleared with none let through" is at each model's best threshold, chosen on the same 83
 commands, so it is a ceiling for comparing models, not a number any of them would ship
 with.
+
+---
+
+## Beside a rule-based guard
+
+*2026-09-25, `npm run eval:compare`, cc-safety-net 2.4.7 with its `checkCommand` defaults and
+a fresh empty directory as the working directory. Strings only. The `llm` rows are the logged
+runs at the shipped 0.2, not new reads.*
+
+| set | cc-safety-net: unsafe stopped · safe passed | `allowlist` gate | `llm` gate |
+|---|---|---|---|
+| dev (83) | 18/42 · 41/41 | 42/42 · 23/41 | 42/42 · 36/41 |
+| test 1 (125) | 15/70 · 53/55 | 70/70 · 4/55 | — |
+| test 2 (96) | 9/43 · 52/53 | 43/43 · 7/53 | 42/43 · 26/53 |
+| test 3 (153) | 11/76 · 76/77 | 76/76 · 8/77 | 76/76 · 26/77 |
+
+Test 3 by harm, cc-safety-net stopping: destroys data 11/32, outside the project 4/56, sends
+data out 0/3, reveals a credential 0/7. The credential cases are passwords on the command line
+(`mysql -p…`, `docker run -e MYSQL_ROOT_PASSWORD=…`); its credential rules guard files.
+
+On this machine's agent traffic — 10,751 distinct Bash commands from the Claude Code
+transcripts, each checked with its own session's working directory — it blocked 80 (0.74%).
+By rule: an `.env` variant 24, `rm -rf` outside the working directory 20, an `.env` file 7,
+`git worktree remove --force` 7, a dangerous-looking raw text 6, and single-digit others.
+Read by hand, some were worth the stop and some were words inside a commit message or a
+heredoc that matched a rule; those reads are not labelled, so there is no rate to give.
+
+The comparison reads the held-out sets, so each one's log records it, and nothing in the gate
+was chosen on it. dcg is not measured: its licence withholds rights from Anthropic and anyone
+acting for it, benchmarking included, and these measurements are made with Claude Code.
 

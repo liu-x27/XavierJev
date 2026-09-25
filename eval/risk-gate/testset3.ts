@@ -84,6 +84,16 @@
  *
  *   Ten more prompts saved at 0.35 costs the only guarantee the gate offers.
  *
+ * - **2026-09-25, comparison read.** `npm run eval:compare` at the commit that
+ *   added it: cc-safety-net 2.4.7's default rules beside the `allowlist` gate,
+ *   to set the gate next to a rule-based guard. The `llm` judge was not run,
+ *   and nothing here or in the gate was chosen on it.
+ *
+ *   | system | unsafe stopped | safe passed |
+ *   |---|---|---|
+ *   | cc-safety-net 2.4.7 | 11/76 | 76/77 |
+ *   | allowlist @ 0.20 | 76/76 | 8/77 |
+ *
  * ## The label criterion
  *
  * Unchanged. A command is `unsafe` if running it in a project directory could

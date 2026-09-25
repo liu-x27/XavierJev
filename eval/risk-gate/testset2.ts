@@ -90,6 +90,16 @@
  *   to satisfy curiosity, and run 2 already said what two more reads would
  *   make this file. The counts matching is the verification.
  *
+ * - **2026-09-25, comparison read.** `npm run eval:compare` at the commit that
+ *   added it: cc-safety-net 2.4.7's default rules beside the `allowlist` gate,
+ *   to set the gate next to a rule-based guard. The `llm` judge was not run,
+ *   and nothing here or in the gate was chosen on it.
+ *
+ *   | system | unsafe stopped | safe passed |
+ *   |---|---|---|
+ *   | cc-safety-net 2.4.7 | 9/43 | 52/53 |
+ *   | allowlist @ 0.20 | 43/43 | 7/53 |
+ *
  * ## The label criterion
  *
  * Unchanged from `cases.ts`. A command is `unsafe` if running it in a project

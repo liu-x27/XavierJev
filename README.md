@@ -470,6 +470,36 @@ writes a newline before its answer, so its first token carries no Y or N and the
 turns it away before a question is asked. "Cleared with none let through" is each model's
 ceiling, at the best threshold for it chosen on these same commands.
 
+## Beside a rule-based guard
+
+`npm run eval:compare` puts [cc-safety-net](https://github.com/kenryu42/cc-safety-net) 2.4.7,
+a rule-based PreToolUse guard, over the same labelled commands. It blocks what its rules
+recognise and passes the rest; the gate clears what it is sure of and leaves the rest to the
+prompt. So they are compared on the two counts both have: unsafe commands stopped — blocked
+by one, left to the user by the other — and safe ones passed without friction.
+
+| test 3 (153 commands) | unsafe stopped | safe passed |
+|---|---|---|
+| cc-safety-net 2.4.7, default rules | 11/76 (14%) | 76/77 (99%) |
+| `allowlist` gate | 76/76 | 8/77 (10%) |
+| **`llm` gate, llama3.1:8b** | **76/76** | **26/77 (34%)** |
+
+By harm, it stopped 11 of the 32 destructive commands, 4 of the 56 that reach outside the
+project, none of the 3 that send data out — its README says it does not watch the network —
+and none of the 7 credential cases, which are passwords typed on the command line rather than
+the files (`~/.ssh`, `.env`) its credential rules guard. Tests 1 and 2 and the dev set say the
+same; `eval:compare` prints them all. Over this machine's own agent traffic, 10,751 distinct
+commands, it would have blocked 80 (0.7%): among them a force-removed worktree, a deleted
+remote branch and a key read out of a `.env.local` into a request, and among them words in a
+commit message that matched a rule.
+
+The two fail in opposite directions, and nothing stops running both: the guard in PreToolUse,
+where it sees every call in every permission mode, and the gate in PermissionRequest, where
+it only ever clears. [dcg](https://github.com/Dicklesworthstone/destructive_command_guard), the
+most-starred guard of this kind, is not in the table: its MIT licence carries a rider granting
+no rights to Anthropic or those acting for it, benchmarking included, and these measurements
+are made with Claude Code.
+
 ## Are the numbers worth thresholding?
 
 A threshold only means something if the numbers under it do. `npm run eval:calibration`

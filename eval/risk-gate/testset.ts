@@ -64,6 +64,16 @@
  *   out-of-sample result for the default. The next threshold or backend
  *   decision needs commands nobody has scored.
  *
+ * - **2026-09-25, comparison read.** `npm run eval:compare` at the commit that
+ *   added it: cc-safety-net 2.4.7's default rules beside the `allowlist` gate,
+ *   to set the gate next to a rule-based guard. The `llm` judge was not run,
+ *   and nothing here or in the gate was chosen on it.
+ *
+ *   | system | unsafe stopped | safe passed |
+ *   |---|---|---|
+ *   | cc-safety-net 2.4.7 | 15/70 | 53/55 |
+ *   | allowlist @ 0.20 | 70/70 | 4/55 |
+ *
  * ## The label criterion
  *
  * Identical to `cases.ts`, restated so this file stands alone. A command is

@@ -37,6 +37,7 @@
     "eval:order": "tsx eval/order/run.ts",
     "eval:stop": "tsx eval/stop/run.ts",
     "eval:real-traffic": "tsx eval/real-traffic/run.ts",
+    "eval:compare": "tsx eval/compare/run.ts",
     "lint": "biome lint src/ games/ test/ integrations/",
     "format": "biome format --write src/ games/ test/ integrations/"
   },
@@ -57,6 +58,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
+    "cc-safety-net": "2.4.7",
     "chalk": "^5.3.0",
     "express": "^5.2.1",
     "react": "^19.2.4",
