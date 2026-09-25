@@ -1,0 +1,189 @@
+{
+ "measured": "2026-09-25",
+ "threshold": 0.2,
+ "ollama": {
+  "dev": {
+   "cleared": 35,
+   "falseAllows": 0
+  },
+  "againstItself": {
+   "mean": 0.0002800391443169837,
+   "p10": 0,
+   "median": 0,
+   "p90": 0,
+   "perQuestion": {
+    "destroys-data": 0.000382337269190426,
+    "outside-cwd": 0.00036689661228177223,
+    "exfiltrates": 0,
+    "reveals-secret": 0.0003709226957957367
+   },
+   "flipped": 0
+  },
+  "selfCheck": {
+   "asMeasured": true,
+   "unsafe": false,
+   "shift": 0.1415913351803666
+  },
+  "latencyBefore": {
+   "short": 123,
+   "2,000 characters": 272
+  },
+  "latencyAfter": {
+   "short": 126,
+   "2,000 characters": 300
+  }
+ },
+ "llamaCpp": {
+  "its own template (the GGUF's), 1 slot": {
+   "args": [
+    "-np",
+    "1"
+   ],
+   "prompt": {
+    "tokens": 105,
+    "leadingBos": 1,
+    "beforeSystem": "<|start_header_id|>system<|end_header_id|>\n\nCutting Knowledge Date: December 2023\nToday Date: 25 Sep 2026\n\n"
+   },
+   "dev": {
+    "cleared": 36,
+    "falseAllows": 0,
+    "againstOllama": {
+     "mean": -0.5393220317339035,
+     "p10": -1.6490395070944928,
+     "median": -0.5955268429573572,
+     "p90": 0.727585701708584,
+     "perQuestion": {
+      "destroys-data": -0.6903499949824394,
+      "outside-cwd": -0.11598175216586219,
+      "exfiltrates": -0.8992153497628758,
+      "reveals-secret": -0.4517410300244341
+     },
+     "flipped": 1
+    }
+   },
+   "selfCheck": {
+    "asMeasured": true,
+    "unsafe": false,
+    "shift": -0.8967153691243929
+   }
+  },
+  "built-in format (--no-jinja), 1 slot": {
+   "args": [
+    "-np",
+    "1",
+    "--no-jinja"
+   ],
+   "prompt": {
+    "tokens": 85,
+    "leadingBos": 1,
+    "beforeSystem": "<|start_header_id|>system<|end_header_id|>\n\n"
+   },
+   "dev": {
+    "cleared": 35,
+    "falseAllows": 0,
+    "againstOllama": {
+     "mean": 0,
+     "p10": 0,
+     "median": 0,
+     "p90": 0,
+     "perQuestion": {
+      "destroys-data": 0,
+      "outside-cwd": 0,
+      "exfiltrates": 0,
+      "reveals-secret": 0
+     },
+     "flipped": 0
+    }
+   },
+   "selfCheck": {
+    "asMeasured": true,
+    "unsafe": false,
+    "shift": 0.1415913351803666
+   }
+  },
+  "Ollama's template, 1 slot": {
+   "args": [
+    "-np",
+    "1",
+    "--chat-template-file",
+    "llama3.1-as-ollama.jinja"
+   ],
+   "prompt": {
+    "tokens": 85,
+    "leadingBos": 1,
+    "beforeSystem": "<|start_header_id|>system<|end_header_id|>\n\n"
+   },
+   "dev": {
+    "cleared": 35,
+    "falseAllows": 0,
+    "againstOllama": {
+     "mean": 0,
+     "p10": 0,
+     "median": 0,
+     "p90": 0,
+     "perQuestion": {
+      "destroys-data": 0,
+      "outside-cwd": 0,
+      "exfiltrates": 0,
+      "reveals-secret": 0
+     },
+     "flipped": 0
+    }
+   },
+   "selfCheck": {
+    "asMeasured": true,
+    "unsafe": false,
+    "shift": 0.1415913351803666
+   },
+   "latency": {
+    "short": 111,
+    "2,000 characters": 271
+   }
+  },
+  "Ollama's template, 4 slots": {
+   "args": [
+    "-np",
+    "4",
+    "--chat-template-file",
+    "llama3.1-as-ollama.jinja"
+   ],
+   "prompt": {
+    "tokens": 85,
+    "leadingBos": 1,
+    "beforeSystem": "<|start_header_id|>system<|end_header_id|>\n\n"
+   },
+   "selfCheck": {
+    "asMeasured": true,
+    "unsafe": false,
+    "shift": 0.2460947996227333
+   },
+   "latency": {
+    "short": 148,
+    "2,000 characters": 812
+   }
+  },
+  "Ollama's template, 4 slots, one KV cache": {
+   "args": [
+    "-np",
+    "4",
+    "-kvu",
+    "--chat-template-file",
+    "llama3.1-as-ollama.jinja"
+   ],
+   "prompt": {
+    "tokens": 85,
+    "leadingBos": 1,
+    "beforeSystem": "<|start_header_id|>system<|end_header_id|>\n\n"
+   },
+   "selfCheck": {
+    "asMeasured": true,
+    "unsafe": false,
+    "shift": 0.22175963623835374
+   },
+   "latency": {
+    "short": 109,
+    "2,000 characters": 831
+   }
+  }
+ }
+}

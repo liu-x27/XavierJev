@@ -1,0 +1,9 @@
+{#- Ollama's llama3.1 template for messages without tools, in Jinja, for llama-server's
+    --chat-template-file: no date preamble, no trimming, and no BOS, which the tokenizer
+    adds. The gate's threshold was measured on the prompt this produces. -#}
+{%- for message in messages -%}
+{{- '<|start_header_id|>' + message['role'] + '<|end_header_id|>\n\n' + message['content'] + '<|eot_id|>' -}}
+{%- endfor -%}
+{%- if add_generation_prompt -%}
+{{- '<|start_header_id|>assistant<|end_header_id|>\n\n' -}}
+{%- endif -%}

@@ -51,6 +51,16 @@ npm run arena                             # the games' server, :3002
 npm run arena:client                      # the games, at http://localhost:5175
 ```
 
+llama.cpp's `llama-server` serves the same GGUF just as well (`ollama show llama3.1:8b
+--modelfile` prints its path), given the prompt the threshold was measured on. Its default
+template writes today's date into the prompt and moves the gate's answers
+([On another server](#on-another-server)), so start it with `--no-jinja`:
+
+```bash
+llama-server -m <the GGUF> -ngl 99 --no-jinja   # or --chat-template-file eval/llama-cpp/llama3.1-as-ollama.jinja
+export AGENT_JUDGE_API_KEY=none AGENT_JUDGE_BASE_URL=http://127.0.0.1:8080/v1 AGENT_JUDGE_MODEL=llama3.1:8b
+```
+
 As a library. It is not on npm; installing from GitHub builds it, and
 [mini-claude-code](https://github.com/liu-x27/mini-claude-code) takes it this way:
 
@@ -218,7 +228,10 @@ reads it clears far below 0.2, and one sure case for each harm — and compares 
 with the ones recorded when the threshold was measured. A held canary allowed, or scores
 moved more than one unit of log-odds towards allowing, is `unsafe`: do not use this gate.
 Moved the other way, it is safe but not the gate that was measured, and its threshold wants
-measuring again. `eval:risk-gate` runs the check before anything else and prints it.
+measuring again. `eval:risk-gate` runs the check before anything else and prints it. The
+check bounds a move, it does not detect every one: the same weights on llama.cpp's default
+template moved its canaries 0.90 towards allowing, inside the limit, so that gate reads *as
+measured* on a prompt nobody measured ([On another server](#on-another-server)).
 
 The prompt is on that list because of what `npm run eval:order` found: the same four
 questions over the 83 dev commands, asked as shipped and then with N named before Y in the
@@ -442,9 +455,10 @@ The gate's four questions queue behind each other on the server, and they share 
 start: after the first question read that command, the other three took about 20 ms each,
 because the server kept what it had read. Parallel slots undo exactly that. Each slot keeps
 its own copy, so four slots read the same command four times, and the gate gets slower —
-three times slower on the long one. The lever for a decision layer is a smaller model (not
-measured here), or a server that reads the shared part once and answers the four in one
-pass, not more slots.
+three times slower on the long one. More slots are not the lever for a decision layer. That
+leaves a smaller model, which the next section finds barely faster and much worse, and a
+server that reads the shared part once and answers the four in one pass, which neither
+Ollama nor [llama.cpp's server](#on-another-server) is.
 
 ## Smaller judges
 
@@ -472,6 +486,43 @@ the fourth not the gate that was measured. glm4:9b, a usable judge three weeks a
 writes a newline before its answer, so its first token carries no Y or N and the probe
 turns it away before a question is asked. "Cleared with none let through" is each model's
 ceiling, at the best threshold for it chosen on these same commands.
+
+## On another server
+
+`npm run eval:llama-cpp` puts the gate on llama.cpp's `llama-server` beside Ollama, both
+serving the one GGUF file Ollama keeps for llama3.1:8b, so whatever moves is the server
+(2026-09-25, llama.cpp b11190, RTX 5080):
+
+| server, and the chat template it builds the prompt with | dev set at 0.2: cleared · false allows | answers against Ollama's, mean in log-odds | self-check |
+|---|---|---|---|
+| Ollama | 35/41 · 0/42 | a second run: 0.000 | as measured, +0.14 |
+| llama.cpp, the GGUF's own — its default | 36/41 · 0/42 | **−0.54** | as measured, −0.90 |
+| llama.cpp, `--no-jinja` | 35/41 · 0/42 | 0.000 | as measured, +0.14 |
+| llama.cpp, `--chat-template-file eval/llama-cpp/llama3.1-as-ollama.jinja` | 35/41 · 0/42 | 0.000 | as measured, +0.14 |
+
+Given the prompt Ollama builds, llama.cpp returns Ollama's answers, all 332 of them. Its
+default does not build that prompt. It renders the template stored in the GGUF, which is
+Meta's and puts two lines ahead of the gate's system prompt: *Cutting Knowledge Date:
+December 2023* and *Today Date: 25 Sep 2026*. Those twenty tokens moved the answers half a
+unit of log-odds towards allowing on average, and a tenth of them by more than 1.6. On the
+dev set that cleared one more safe command and let nothing unsafe through. The date is the
+day's, so that prompt changes every midnight. The self-check reported the move and passed
+it, since −0.90 is inside its limit of 1.
+
+Speed is Ollama's. One gate decision, median of 15, with another job holding about a fifth
+of the GPU when it started:
+
+| | short command | 2,000 characters |
+|---|---|---|
+| Ollama, before · after the llama.cpp runs | 123 · 126 ms | 272 · 300 ms |
+| llama.cpp, one slot | 111 ms | 271 ms |
+| llama.cpp, four slots | 148 ms | 812 ms |
+| llama.cpp, four slots sharing one KV cache (`-kvu`) | 109 ms | 831 ms |
+
+Four slots make the long command three times slower, as Ollama's four did, which is what
+reading it four times costs, and a KV cache the slots share does not change that. Batching
+also nudges the arithmetic: with four slots the self-check's canaries sat at +0.25 and +0.22
+rather than +0.14.
 
 ## On real traffic
 
@@ -635,7 +686,8 @@ standing up first; the ones published were measured against a local Ollama servi
 
 **What is not known.** Anything about a judge other than llama3.1:8b beyond the ladder
 above: every other `llm` number here is that one model, at Ollama's default quantisation. Whether a hosted provider's
-logprobs agree with a local model's: this path has only run against Ollama. How much of the
+logprobs agree with a local model's: this path has run against Ollama and llama.cpp's server,
+which agree once they build the same prompt, and against nothing hosted. How much of the
 unsafe traffic an agent actually sends gets through: what the gate cleared of it has been
 read, 6 of 1,181 should have been asked about, but what it held has not; and how it does
 against commands written to slip past it — obfuscated, encoded, split across variables — which no set here contains. Whether a third fewer prompts feels different

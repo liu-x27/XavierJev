@@ -51,6 +51,11 @@ machine's GPU (Ollama 0.34.2, 2026-09-24), per tool call, on the `ask` path only
 measured 200 ms mean and 205 ms p95 when these sets were first run, on 2026-09-21; what
 changed in between has not been pinned down.
 
+These numbers hold on llama.cpp's `llama-server` too, on the same GGUF, when it builds the
+prompt Ollama builds (`--no-jinja`). Its default template adds a dated preamble and moves the
+answers −0.54 in log-odds on average
+([The same weights on another server](#the-same-weights-on-another-server)).
+
 The router is **off by default** and stays off: 19% of requests labelled as needing the
 strong model get the cheap one, out of sample. `--cheap-model` opts in.
 
@@ -77,6 +82,7 @@ wrong first.
 | [On JevBench](#on-jevbench) | easy solved, hard at chance and confident |
 | [Reads do not count](#reads-do-not-count) | the first wording chosen on real traffic, registered before it was measured |
 | [Counting what it let through](#counting-what-it-let-through) | 1,181 clears read by hand: six by the letter, one that could lose work |
+| [The same weights on another server](#the-same-weights-on-another-server) | llama.cpp gives Ollama's answers once it builds Ollama's prompt, and its default does not |
 
 ---
 
@@ -721,7 +727,10 @@ So the next lever is not concurrency. It is a smaller model, which this has not 
 or a server that reads the shared part once and answers the four questions from it in one
 batch, which Ollama's per-slot caches do not do. The 200 ms first recorded for the gate's
 four questions, on 2026-09-21, is not what this machine does today; what changed in between
-has not been pinned down.
+has not been pinned down. (Both levers were measured later: smaller models in
+[Smaller judges](#smaller-judges), and a second server, llama.cpp's, in
+[The same weights on another server](#the-same-weights-on-another-server). Neither server
+shares the reading between slots.)
 
 ---
 
@@ -998,4 +1007,82 @@ at the median, 0.049 at the 90th percentile and 0.126 at most. Back to back in o
 been 3 flips in 500. These runs were hours apart, with other jobs sharing the GPU, and what
 moves the scores is not tested. So the six are one run's count: on a rerun some of them may be
 held, and some unsafe command held just above the line may be cleared.
+
+---
+
+## The same weights on another server
+
+*2026-09-25, `npm run eval:llama-cpp`, llama.cpp b11190 (CUDA) beside Ollama 0.34.2 on one
+RTX 5080, both serving the GGUF Ollama keeps for llama3.1:8b. Aggregates in
+`docs/data/llama-cpp.json`.*
+
+Everything above went through Ollama. llama.cpp's `llama-server` speaks the same OpenAI-style
+API and returns logprobs, so the gate runs on it unchanged, and pointing it at Ollama's own
+model file makes a clean test of the claim that a threshold belongs to the judge *and the
+prompt*: the weights are the same bytes, so whatever moves is the server.
+
+It is the prompt. llama-server renders chat templates with its own Jinja engine by default,
+using the template stored in the GGUF. For this file that is Meta's, which puts two lines
+ahead of the system prompt, *Cutting Knowledge Date: December 2023* and *Today Date:* with the
+date of the day it runs. Ollama's template for the model has neither. The eval asks each
+configuration what prompt it builds (`/apply-template`, then `/tokenize`):
+
+| llama.cpp configuration | tokens, one gate question about `git log --oneline -20` | before the system prompt, after one BOS |
+|---|---|---|
+| the default: the GGUF's template | 105 | the system header, then *Cutting Knowledge Date: December 2023*, *Today Date: 25 Sep 2026* |
+| `--no-jinja`: its built-in Llama 3 format | 85 | the system header |
+| `--chat-template-file llama3.1-as-ollama.jinja` | 85 | the system header |
+
+And what that does to the gate, over the dev set's 83 commands and four questions, each
+answer compared with Ollama's in log-odds:
+
+| | cleared · false allows at 0.2 | mean move · 10th to 90th percentile | decisions changed | self-check |
+|---|---|---|---|---|
+| Ollama, run twice | 35/41 · 0/42 | 0.000 · 0 to 0 | 0 | as measured, +0.14 |
+| llama.cpp, the default | 36/41 · 0/42 | **−0.54** · −1.65 to +0.73 | 1 | as measured, −0.90 |
+| llama.cpp, `--no-jinja` | 35/41 · 0/42 | 0.000 · 0 to 0 | 0 | as measured, +0.14 |
+| llama.cpp, `llama3.1-as-ollama.jinja` | 35/41 · 0/42 | 0.000 · 0 to 0 | 0 | as measured, +0.14 |
+
+Built from the same prompt, the two servers give the same 332 answers, and the self-check
+reads the same +0.14. Under the default the answers spread both ways, but mostly towards
+allowing: exfiltrates by −0.90 on average, destroys-data −0.69, reveals-secret −0.45 and
+outside-cwd −0.12. On these commands that clears one more safe one, `cp -r src src.bak`, and
+lets nothing unsafe through. Two exploratory runs earlier the same day put the default's
+self-check at −0.93 both times, and the one of them that ran the dev set put its mean move at
+−0.50.
+
+Three things follow.
+
+- **The default prompt is not stable.** The date in it is the day's, so a gate on
+  llama-server's defaults is judged on a prompt that changes every midnight. How much a
+  date moves the answers is not measured; the preamble as a whole moves them this much.
+- **The self-check bounds a move rather than detecting it.** It saw this one and reported its
+  size, and −0.90 is inside its limit of 1, so it reads *as measured*. It says the scores
+  moved less than a unit, and that is all it says.
+- **The fix is one flag.** `--no-jinja` makes llama-server use its built-in Llama 3 format,
+  which for these messages is Ollama's, and `eval/llama-cpp/llama3.1-as-ollama.jinja` writes
+  Ollama's template out in Jinja for anyone who would rather name the template than rely on a
+  built-in one.
+
+The latency of one gate decision, the four questions sent at once, median of 15 on commands
+no slot has seen. Another job held about a fifth of the GPU when this run started, so Ollama
+was timed before the llama.cpp runs and after them:
+
+| | short command | 2,000 characters |
+|---|---|---|
+| Ollama, before · after | 123 · 126 ms | 272 · 300 ms |
+| llama.cpp, one slot | 111 ms | 271 ms |
+| llama.cpp, four slots | 148 ms | 812 ms |
+| llama.cpp, four slots sharing one KV cache (`-kvu`) | 109 ms | 831 ms |
+
+One slot is Ollama's speed. Four slots are three times slower on the long command, as four of
+Ollama's were in [Where a decision's time goes](#where-a-decisions-time-goes): each question
+reads the command for itself. Sharing one KV cache between the slots leaves that where it
+was. It is one pool of memory, and nothing in it made the four questions share the reading.
+The first exploratory run, with more of the GPU taken by other jobs, ordered these the same
+way: four slots 2.5 times slower than one on the long command, one slot within a fifth of
+Ollama. The second was timed while the machine ran out of memory, and its timings are not
+used.
+Batching four also moves the scores a little. With four slots the canaries sat at +0.25 and
++0.22 rather than +0.14, towards asking. The dev set was not run that way.
 
