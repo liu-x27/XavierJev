@@ -54,8 +54,11 @@ async function askFlap(flight: Flight): Promise<Answer> {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ flight }),
     });
-    const data = (await res.json()) as { probability?: number; latencyMs?: number; error?: string };
-    const ms = data.latencyMs ?? performance.now() - started;
+    const data = (await res.json()) as { probability?: number; error?: string };
+    // The budget is kept on this page's clock, so an answer's time is the
+    // round trip as the page saw it, not the judge's share the server reports:
+    // timed that way, answers read as inside a budget that ticks were missing.
+    const ms = performance.now() - started;
     if (!res.ok || typeof data.probability !== "number") return { error: data.error ?? `HTTP ${res.status}`, ms };
     return { p: data.probability, ms };
   } catch (err) {
