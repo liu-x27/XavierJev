@@ -14,6 +14,8 @@
  *   npm run arena:client                               # terminal 2
  *   path/to/electron.exe docs/capture-arena.mjs
  *   CAPTURE_GAME=flappy CAPTURE_BUDGET=60 path/to/electron.exe docs/capture-arena.mjs
+ *   CAPTURE_WAIT_GAMES=0 CAPTURE_FROM_SCORE=35 CAPTURE_WAIT_MIN=30 CAPTURE_SECONDS=25 \
+ *     CAPTURE_UNTIL_END=1 path/to/electron.exe docs/capture-arena.mjs   # the first game past 35, to its end
  */
 import { app, BrowserWindow } from "electron";
 import { spawnSync } from "node:child_process";
@@ -35,8 +37,12 @@ const OUT = path.join(path.dirname(fileURLToPath(import.meta.url)), `${GAME}-are
 // one recorded; nothing is retried.
 const WAIT_GAMES = Number(process.env.CAPTURE_WAIT_GAMES ?? (GAME === "snake" ? 3 : 0));
 const FROM_SCORE = Number(process.env.CAPTURE_FROM_SCORE ?? (GAME === "snake" ? 15 : 20));
-const WAIT_LIMIT_MS = 6 * 60_000;
-const RECORD_MS = 10000;
+// How long to wait for such a game (CAPTURE_WAIT_MIN, minutes), and how long to record
+// (CAPTURE_SECONDS). With CAPTURE_UNTIL_END=1 the clip stops a moment after the recorded
+// game ends, if that comes first — a high threshold may take many games to meet.
+const WAIT_LIMIT_MS = Number(process.env.CAPTURE_WAIT_MIN ?? 6) * 60_000;
+const RECORD_MS = Number(process.env.CAPTURE_SECONDS ?? 10) * 1000;
+const UNTIL_END = process.env.CAPTURE_UNTIL_END === "1";
 const WIDTH = 920; // of the GIF, in pixels
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -120,7 +126,9 @@ app.whenReady().then(async () => {
       last = now;
       writeFileSync(path.join(frames, `f${String(n++).padStart(4, "0")}.jpg`), image.toJPEG(95));
     });
-    await sleep(RECORD_MS);
+    // Until the clip's length, or (CAPTURE_UNTIL_END) until the recorded game has ended and its
+    // crash has been on screen a moment.
+    await Promise.race([sleep(RECORD_MS), ...(UNTIL_END ? [ended.then((e) => (e ? sleep(1500) : new Promise(() => {})))] : [])]);
     win.webContents.endFrameSubscription();
     const fps = n / ((Date.now() - started) / 1000);
     const hud = await js(`[...document.querySelectorAll(".hud-kpi")].map(e => e.innerText.replace(/\\n/g, " ")).join(" | ")`);

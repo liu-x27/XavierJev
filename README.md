@@ -307,10 +307,12 @@ whose failures were shrinking — 5 failing tests, then 3, then 1. Asking whethe
 
 ![The snake arena playing live against llama3.1:8b](docs/snake-arena.gif)
 
-*Live, at the speed it decided. Recorded after three whole games on the page (mean 27.7),
-from when the fourth passed 15: it boxes itself in at 19 — the room the rule counts and
-the model is not told about — and the fifth starts. That one went on to 43; the five
-averaged 29.0. `docs/capture-arena.mjs` records whichever game comes next, and retries
+*Live, at the speed it decided: the page's fifth game, from when it passed 35 to its end at
+43, boxed in with the board nearly full — the room the rule counts and the model is not
+told about. It is the best of the five; the four before it averaged 25.5, the five 29.0.
+Each game on the page starts from its own seed and the judge answered the same way both
+times this was recorded, so the fifth game is the same game every time.
+`docs/capture-arena.mjs` records the first game past the score it is given, and retries
 nothing.*
 
 **Snake** is `choice()`: a rule removes the walls and the body before anything is asked,
