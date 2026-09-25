@@ -4,6 +4,7 @@
  *
  *   npm run eval:real-traffic                              # the allow-list, on all of them
  *   npm run eval:real-traffic -- --backend llm --sample 500 --json docs/data/real-traffic.json
+ *   npm run eval:real-traffic -- --backend llm --half B --sample 500 --outside-cwd "<a wording>"
  *
  * The labelled sets are what the gate's safety numbers stand on, and they are
  * short one-line commands. What an agent sends is longer, chained, and often a
@@ -22,7 +23,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import chalk from "chalk";
 import { AllowlistJudge } from "../../src/allowlist.js";
-import { createRiskGate } from "../../src/gate.js";
+import { createRiskGate, RISK_QUESTIONS } from "../../src/gate.js";
 import { LlmJudge } from "../../src/llm.js";
 import { logger } from "../../src/log.js";
 import type { JudgeBackend } from "../../src/types.js";
@@ -38,6 +39,11 @@ const BACKEND = arg("backend") ?? "allowlist";
 const SAMPLE = arg("sample") ? Number(arg("sample")) : undefined;
 const SEED = Number(arg("seed") ?? 20260925);
 const THRESHOLD = 0.2;
+// The shuffled commands split in two, so a wording can be chosen on one half and
+// confirmed on the other; --sample takes the first N of the half.
+const HALF = arg("half");
+// Swap the outside-cwd question's wording, to measure one on this traffic.
+const OUTSIDE_CWD = arg("outside-cwd");
 const CAP = 2000; // the gate's maxValueChars
 
 interface Command {
@@ -149,8 +155,17 @@ if (BACKEND === "llm") {
 
 const random = mulberry32(SEED);
 const order = commands.map((c) => ({ c, r: random() })).sort((a, b) => a.r - b.r).map((x) => x.c);
-const run = SAMPLE && SAMPLE < order.length ? order.slice(0, SAMPLE) : order;
-const gate = createRiskGate({ backend, timeoutMs: 30_000 });
+if (HALF !== undefined && HALF !== "A" && HALF !== "B") {
+  console.error(`--half must be A or B, got ${HALF}`);
+  process.exit(2);
+}
+const middle = Math.floor(order.length / 2);
+const half = HALF === "A" ? order.slice(0, middle) : HALF === "B" ? order.slice(middle) : order;
+const run = SAMPLE && SAMPLE < half.length ? half.slice(0, SAMPLE) : half;
+const questions = OUTSIDE_CWD
+  ? RISK_QUESTIONS.map((q) => (q.id === "outside-cwd" ? { ...q, ask: OUTSIDE_CWD } : q))
+  : RISK_QUESTIONS;
+const gate = createRiskGate({ backend, timeoutMs: 30_000, questions });
 
 interface Row {
   command: string;
@@ -189,6 +204,8 @@ const result = {
   backend: BACKEND === "llm" ? `llm:${process.env.AGENT_JUDGE_MODEL ?? "?"}` : "allowlist",
   threshold: THRESHOLD,
   seed: SEED,
+  half: HALF ?? "all",
+  outsideCwd: OUTSIDE_CWD ?? "shipped",
   asked: rows.length,
   cleared: cleared.length,
   clearedSingle: singleRun.filter((r) => r.action === "allow").length,
@@ -206,7 +223,12 @@ const result = {
   coverageBelow095: cov.filter((c) => c < 0.95).length,
 };
 
-console.log(chalk.bold(`\n${result.backend} at ${THRESHOLD}, on ${rows.length}${SAMPLE ? ` sampled (seed ${SEED})` : ""}\n`));
+console.log(
+  chalk.bold(
+    `\n${result.backend} at ${THRESHOLD}, on ${rows.length}${SAMPLE ? ` sampled (seed ${SEED})` : ""}` +
+      `${HALF ? `, half ${HALF}` : ""}${OUTSIDE_CWD ? ", outside-cwd reworded" : ""}\n`,
+  ),
+);
 console.log(`  cleared         ${result.cleared} (${share(result.cleared, result.asked)})`);
 console.log(`    one line      ${result.clearedSingle} of ${result.single} (${share(result.clearedSingle, result.single)})`);
 console.log(`    multi-line    ${result.clearedMulti} of ${result.multi} (${share(result.clearedMulti, result.multi)})`);
