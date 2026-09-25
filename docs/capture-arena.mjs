@@ -13,6 +13,7 @@
  *     AGENT_JUDGE_API_KEY=ollama npm run arena         # terminal 1
  *   npm run arena:client                               # terminal 2
  *   path/to/electron.exe docs/capture-arena.mjs
+ *   CAPTURE_GAME=flappy CAPTURE_BUDGET=60 path/to/electron.exe docs/capture-arena.mjs
  */
 import { app, BrowserWindow } from "electron";
 import { spawnSync } from "node:child_process";
@@ -24,18 +25,39 @@ import { fileURLToPath } from "node:url";
 // CAPTURE_GAME=flappy records the Flappy tab instead, as docs/flappy-arena.gif.
 const GAME = process.env.CAPTURE_GAME === "flappy" ? "flappy" : "snake";
 const URL = `http://localhost:5175/${GAME === "flappy" ? "#arena/flappy" : "#arena"}`;
+// Flappy's budget, in ms: 60, 30 or 20; the page starts at 30. From a browser
+// the budget has to cover the round trip to the server too, not only the judge.
+const BUDGET = process.env.CAPTURE_BUDGET;
 const OUT = path.join(path.dirname(fileURLToPath(import.meta.url)), `${GAME}-arena.gif`);
-const WARMUP_MS = 4000; // let the latency numbers fill in first
-const RECORD_MS = 8000;
+// Not the opening seconds, where every game looks weak: this many whole
+// games first, so the HUD's mean is over something, then the next game or
+// flight from when it passes this score. Whatever game comes next is the
+// one recorded; nothing is retried.
+const WAIT_GAMES = Number(process.env.CAPTURE_WAIT_GAMES ?? (GAME === "snake" ? 3 : 0));
+const FROM_SCORE = Number(process.env.CAPTURE_FROM_SCORE ?? (GAME === "snake" ? 15 : 20));
+const WAIT_LIMIT_MS = 6 * 60_000;
+const RECORD_MS = 10000;
 const WIDTH = 920; // of the GIF, in pixels
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Whole games so far, the running score, and the crash banner if one is up. */
+const PROGRESS = `(() => {
+  const facts = [...document.querySelectorAll(".hud-facts > div")].map((d) => [d.querySelector("dt").innerText, d.querySelector("dd").innerText]);
+  const games = facts.find(([k]) => /^(Games|Flights)/.test(k));
+  return {
+    games: games ? parseInt(games[1], 10) || 0 : 0,
+    score: parseInt(document.querySelectorAll(".hud-kpi b")[2]?.innerText ?? "0", 10) || 0,
+    mean: games ? games[1] : "",
+    crash: document.querySelector(".board-crash b")?.innerText ?? null,
+  };
+})()`;
 
 app.whenReady().then(async () => {
   const frames = mkdtempSync(path.join(tmpdir(), "agent-arena-"));
   const win = new BrowserWindow({
     width: 1280,
-    height: 780,
+    height: 940, // the arena and its tab strip, whole
     show: true,
     webPreferences: { backgroundThrottling: false },
   });
@@ -52,10 +74,23 @@ app.whenReady().then(async () => {
     if (!judge || judge.includes("no model")) throw new Error("the server has no model judge — set AGENT_JUDGE_*");
     console.log(`judge: ${judge}`);
 
+    if (GAME === "flappy" && BUDGET) {
+      const picked = await js(`(() => { const b = [...document.querySelectorAll('[role="radio"]')].find((e) => e.innerText.trim() === "${BUDGET} ms"); b?.click(); return !!b; })()`);
+      if (!picked) throw new Error(`no ${BUDGET} ms budget on the page`);
+    }
     await js(`document.querySelector('[aria-label="Play"]').click(); true`);
-    await sleep(WARMUP_MS);
+    const waitStarted = Date.now();
+    for (;;) {
+      const p = await js(PROGRESS);
+      if (p.games >= WAIT_GAMES && p.score >= FROM_SCORE && !p.crash) break;
+      if (Date.now() - waitStarted > WAIT_LIMIT_MS) throw new Error(`no game past ${FROM_SCORE} after ${WAIT_GAMES} games in time`);
+      await sleep(100);
+    }
+    const before = await js(PROGRESS);
+    console.log(`recording from ${Math.round((Date.now() - waitStarted) / 1000)} s in: ${before.games} whole, mean ${before.mean}; this one at ${before.score}`);
 
-    const r = await js(`(() => { const b = document.querySelector(".arena").getBoundingClientRect(); return { x: b.x, y: b.y, width: b.width, height: b.height, dpr: devicePixelRatio }; })()`);
+    const r = await js(`(() => { const b = document.querySelector(".arena").getBoundingClientRect(); return { x: b.x, y: b.y, width: b.width, height: b.height, dpr: devicePixelRatio, view: innerHeight }; })()`);
+    if (r.y + r.height > r.view) throw new Error(`the arena runs past the window (${Math.ceil(r.y + r.height)} > ${r.view}); make it taller`);
     // Frames arrive in device pixels; the crop has to be in them too.
     const crop = [r.width, r.height, r.x, r.y].map((v) => Math.round(v * r.dpr)).join(":");
 
@@ -63,6 +98,19 @@ app.whenReady().then(async () => {
     // re-renders on each call and managed about nine a second, which at
     // twenty-odd moves a second skipped two or three moves per frame.
     mkdirSync(frames, { recursive: true });
+
+    // How the recorded game ended, for the caption: watched from the first
+    // frame, since it can end inside the clip. A flight can outlast all this.
+    const ended = (async () => {
+      const endBy = Date.now() + RECORD_MS + 3 * 60_000;
+      while (Date.now() < endBy) {
+        const p = await js(PROGRESS);
+        if (p.crash && p.games > before.games) return `${p.crash}; ${p.games} whole, mean ${p.mean}`;
+        await sleep(50);
+      }
+      return null;
+    })();
+
     let n = 0;
     let last = 0;
     const started = Date.now();
@@ -77,6 +125,9 @@ app.whenReady().then(async () => {
     const fps = n / ((Date.now() - started) / 1000);
     const hud = await js(`[...document.querySelectorAll(".hud-kpi")].map(e => e.innerText.replace(/\\n/g, " ")).join(" | ")`);
     console.log(`${n} frames at ${fps.toFixed(1)} fps · ${hud}`);
+
+    const end = await ended;
+    console.log(end ? `the recorded one ended: ${end}` : "the recorded one had not ended 3 minutes after the clip");
 
     await js(`document.querySelector('[aria-label="Pause"]')?.click(); localStorage.removeItem("theme"); true`);
 

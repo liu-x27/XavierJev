@@ -302,6 +302,12 @@ whose failures were shrinking — 5 failing tests, then 3, then 1. Asking whethe
 
 ![The snake arena playing live against llama3.1:8b](docs/snake-arena.gif)
 
+*Live, at the speed it decided. Recorded after three whole games on the page (mean 27.7),
+from when the fourth passed 15: it boxes itself in at 19 — the room the rule counts and
+the model is not told about — and the fifth starts. That one went on to 43; the five
+averaged 29.0. `docs/capture-arena.mjs` records whichever game comes next, and retries
+nothing.*
+
 **Snake** is `choice()`: a rule removes the walls and the body before anything is asked,
 and the model chooses among the moves that survive — told, for each, whether it closes on
 the food and whether it leads into a dead end. *Raw cells* hands over the same board
@@ -321,7 +327,14 @@ and the question asking which move "gets closer to the food", the model preferre
 from food" often enough to circle the food for hundreds of moves (mean 17.6); "closer to
 food, eats it" took that to 27.2. A decision model answers the question as worded.
 
-![Flappy against a 30 ms budget, live against llama3.1:8b](docs/flappy-arena.gif)
+![Flappy against a 60 ms budget, live against llama3.1:8b](docs/flappy-arena.gif)
+
+*Live, at 60 ms a tick: the page's first flight, from pipe 20. No tick missed, and it was
+still flying three minutes after the clip ends. The page's budget has to cover the round
+trip to the local server as well as the judge, so at 30 ms it does worse than the eval
+below: its answers came back at p95 36 ms, it missed 11.6% and 13.3% of ticks in two
+runs, and its flights averaged 10.0 and 16.0 pipes. Recorded with other work running on
+the same machine.*
 
 **Flappy** runs on a clock: every tick is one yes/no — flap or not — with a budget, and
 an answer that is not back inside it is a miss, on which the bird does nothing.
