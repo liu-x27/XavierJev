@@ -19,7 +19,7 @@
  * characters, so the judge needs a context window of at least 8k tokens; with
  * Ollama, a model built `FROM llama3.1:8b` with `PARAMETER num_ctx 16384`.
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { LlmJudge } from "../../src/llm.js";
 import { logger } from "../../src/log.js";
@@ -34,7 +34,9 @@ const DIR = arg("dir");
 const OUT = arg("out");
 const TIERS = (arg("tiers") ?? "easy,original,hard").split(",");
 if (!DIR || !OUT) {
-  console.error("usage: eval/jevbench/run.ts --dir <jevbench checkout> --out <results.jsonl> [--tiers easy,original,hard]");
+  console.error(
+    "usage: eval/jevbench/run.ts --dir <jevbench checkout> --out <results.jsonl> [--tiers easy,original,hard]",
+  );
   process.exit(2);
 }
 
@@ -53,12 +55,15 @@ if (!capability.logprobs || !capability.firstTokenUsable) {
 }
 const model = process.env.AGENT_JUDGE_MODEL ?? "?";
 
-async function answer(task: Task): Promise<{ probs: Record<string, number>; coverage: number | undefined }> {
+async function answer(
+  task: Task,
+): Promise<{ probs: Record<string, number>; coverage: number | undefined }> {
   const state = { input: task.state };
   const { type, instructions, criteria } = task.question;
   if (type === "noul") {
     const c = (criteria ?? {}) as { true?: string; false?: string };
-    const ask = c.true && c.false ? `${instructions} (Yes: ${c.true}. No: ${c.false}.)` : instructions;
+    const ask =
+      c.true && c.false ? `${instructions} (Yes: ${c.true}. No: ${c.false}.)` : instructions;
     const [a] = await judge.noul(state, [{ id: "decision", ask }]);
     if (!a) throw new Error("no answer");
     return { probs: { yes: a.probability, no: 1 - a.probability }, coverage: a.coverage };
@@ -70,7 +75,10 @@ async function answer(task: Task): Promise<{ probs: Record<string, number>; cove
       instructions,
       task.labels.map((label) => ({ id: label, text: c[label] ?? label })),
     );
-    return { probs: Object.fromEntries(r.answers.map((a) => [a.id, a.probability])), coverage: r.coverage };
+    return {
+      probs: Object.fromEntries(r.answers.map((a) => [a.id, a.probability])),
+      coverage: r.coverage,
+    };
   }
   const levels = (Array.isArray(criteria) ? criteria : []) as string[];
   const r = await judge.rubric(
@@ -78,49 +86,63 @@ async function answer(task: Task): Promise<{ probs: Record<string, number>; cove
     instructions,
     task.labels.map((label, i) => ({ score: Number(label), text: levels[i] ?? label })),
   );
-  return { probs: Object.fromEntries(r.distribution.map((d) => [String(d.score), d.probability])), coverage: r.coverage };
+  return {
+    probs: Object.fromEntries(r.distribution.map((d) => [String(d.score), d.probability])),
+    coverage: r.coverage,
+  };
 }
 
-const records: string[] = [];
+// Each record is appended as soon as it is made, and a task already answered in
+// OUT is not asked again: a run that is stopped picks up where it was.
+const done = new Set<string>();
+if (existsSync(OUT)) {
+  for (const line of readFileSync(OUT, "utf8").split("\n")) {
+    if (!line.trim()) continue;
+    const r = JSON.parse(line) as { task_id: string; ok: boolean };
+    if (r.ok) done.add(r.task_id);
+  }
+}
+const write = (record: object) => appendFileSync(OUT, `${JSON.stringify(record)}\n`);
+
 for (const tier of TIERS) {
   const tasks = readFileSync(path.join(DIR, "datasets", "public", `${tier}.jsonl`), "utf8")
     .split("\n")
     .filter((l) => l.trim())
     .map((l) => JSON.parse(l) as Task);
   let failed = 0;
+  let skipped = 0;
   for (const task of tasks) {
+    if (done.has(task.id)) {
+      skipped++;
+      continue;
+    }
     const started = performance.now();
     try {
       const { probs, coverage } = await answer(task);
-      records.push(
-        JSON.stringify({
-          task_id: task.id,
-          ok: true,
-          probs,
-          coverage,
-          probs_source: "first-token logprobs",
-          latency_s: (performance.now() - started) / 1000,
-          cost_usd: 0,
-          cost_basis: "local",
-          model,
-        }),
-      );
+      write({
+        task_id: task.id,
+        ok: true,
+        probs,
+        coverage,
+        probs_source: "first-token logprobs",
+        latency_s: (performance.now() - started) / 1000,
+        cost_usd: 0,
+        cost_basis: "local",
+        model,
+      });
     } catch (err) {
       failed++;
-      records.push(
-        JSON.stringify({
-          task_id: task.id,
-          ok: false,
-          error: err instanceof Error ? err.message : String(err),
-          latency_s: (performance.now() - started) / 1000,
-          cost_usd: 0,
-          cost_basis: "local",
-          model,
-        }),
-      );
+      write({
+        task_id: task.id,
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+        latency_s: (performance.now() - started) / 1000,
+        cost_usd: 0,
+        cost_basis: "local",
+        model,
+      });
     }
   }
-  console.log(`${tier}: ${tasks.length} tasks, ${failed} failed`);
+  console.log(`${tier}: ${tasks.length} tasks, ${skipped} already answered, ${failed} failed`);
 }
-writeFileSync(OUT, `${records.join("\n")}\n`);
-console.log(`records written to ${OUT}`);
+console.log(`records in ${OUT}`);

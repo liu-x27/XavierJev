@@ -19,7 +19,7 @@
  * name, and says so.
  */
 import { createHash } from "node:crypto";
-import { createReadStream, existsSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, createReadStream, existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
@@ -28,6 +28,7 @@ import { AllowlistJudge } from "../../src/allowlist.js";
 import { createRiskGate, RISK_QUESTIONS } from "../../src/gate.js";
 import { LlmJudge } from "../../src/llm.js";
 import { logger } from "../../src/log.js";
+import type { RiskGate } from "../../src/decisions.js";
 import type { JudgeBackend } from "../../src/types.js";
 
 logger.setLevel("error");
@@ -48,6 +49,8 @@ const HALF = arg("half");
 const OUTSIDE_CWD = arg("outside-cwd");
 // With --paired, the shipped wording and --outside-cwd's on the same commands, in one run.
 const PAIRED = process.argv.includes("--paired");
+// A file the paired run appends its verdicts to, and resumes from.
+const CHECKPOINT = arg("checkpoint");
 const CAP = 2000; // the gate's maxValueChars
 
 interface Command {
@@ -188,23 +191,62 @@ interface Row {
   judged: boolean;
 }
 
+async function verdict(gate: RiskGate, command: string): Promise<Row> {
+  const v = await gate({ toolName: "Bash", input: { command }, description: command });
+  const coverages = (v.answers ?? []).map((a) => a.coverage).filter((c): c is number => c !== undefined);
+  return {
+    command,
+    action: v.action,
+    probability: v.probability,
+    worst: v.answers?.reduce((a, b) => (b.probability > a.probability ? b : a)).id,
+    latencyMs: v.latencyMs,
+    minCoverage: coverages.length ? Math.min(...coverages) : undefined,
+    judged: v.answers !== undefined || v.latencyMs !== undefined,
+  };
+}
+
 async function measure(questions: typeof RISK_QUESTIONS): Promise<Row[]> {
   const gate = createRiskGate({ backend, timeoutMs: 30_000, questions });
   const rows: Row[] = [];
-  for (const { command } of run) {
-    const v = await gate({ toolName: "Bash", input: { command }, description: command });
-    const coverages = (v.answers ?? []).map((a) => a.coverage).filter((c): c is number => c !== undefined);
-    rows.push({
-      command,
-      action: v.action,
-      probability: v.probability,
-      worst: v.answers?.reduce((a, b) => (b.probability > a.probability ? b : a)).id,
-      latencyMs: v.latencyMs,
-      minCoverage: coverages.length ? Math.min(...coverages) : undefined,
-      judged: v.answers !== undefined || v.latencyMs !== undefined,
-    });
-  }
+  for (const { command } of run) rows.push(await verdict(gate, command));
   return rows;
+}
+
+/**
+ * Both wordings over the same commands. With --checkpoint, each command's pair
+ * of verdicts is appended as it is made, keyed by a hash of the command and of
+ * the wording, and a later run reuses them: on a shared machine a run can be
+ * stopped part-way, and the same seed draws the same commands to finish.
+ */
+async function measurePaired(): Promise<{ shipped: Row[]; candidate: Row[] }> {
+  const shippedGate = createRiskGate({ backend, timeoutMs: 30_000, questions: RISK_QUESTIONS });
+  const candidateGate = createRiskGate({ backend, timeoutMs: 30_000, questions: reworded });
+  const hash = (text: string) => createHash("sha256").update(text).digest("hex").slice(0, 16);
+  const wording = hash(OUTSIDE_CWD ?? "");
+  type Saved = { h: string; w: string; shipped: Omit<Row, "command">; candidate: Omit<Row, "command"> };
+  const saved = new Map<string, Saved>();
+  if (CHECKPOINT && existsSync(CHECKPOINT)) {
+    for (const line of readFileSync(CHECKPOINT, "utf8").split("\n")) {
+      if (!line.trim()) continue;
+      const r = JSON.parse(line) as Saved;
+      if (r.w === wording) saved.set(r.h, r);
+    }
+  }
+  const shipped: Row[] = [];
+  const candidate: Row[] = [];
+  for (const { command } of run) {
+    const h = hash(command);
+    let pair = saved.get(h);
+    if (!pair) {
+      const { command: _a, ...a } = await verdict(shippedGate, command);
+      const { command: _b, ...b } = await verdict(candidateGate, command);
+      pair = { h, w: wording, shipped: a, candidate: b };
+      if (CHECKPOINT) appendFileSync(CHECKPOINT, `${JSON.stringify(pair)}\n`);
+    }
+    shipped.push({ command, ...pair.shipped });
+    candidate.push({ command, ...pair.candidate });
+  }
+  return { shipped, candidate };
 }
 
 function report(title: string, rows: Row[]) {
@@ -260,8 +302,7 @@ const out: Record<string, unknown> = {
 const dumped: Record<string, unknown> = {};
 
 if (PAIRED) {
-  const shipped = await measure(RISK_QUESTIONS);
-  const candidate = await measure(reworded);
+  const { shipped, candidate } = await measurePaired();
   out.shipped = report(`${backendName} at ${THRESHOLD}, shipped wording, on ${where}`, shipped);
   out.candidate = report(`${backendName} at ${THRESHOLD}, outside-cwd reworded, on the same ${run.length}`, candidate);
   out.candidateWording = OUTSIDE_CWD;
