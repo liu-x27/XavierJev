@@ -1,6 +1,6 @@
 {
   "name": "xavierjev",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A decision layer for agent control flow: yes/no, choice and rubric questions answered from one token's probabilities, and measured against labelled sets",
   "private": true,
   "license": "MIT",

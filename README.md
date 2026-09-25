@@ -55,7 +55,7 @@ As a library. It is not on npm; installing from GitHub builds it, and
 [mini-claude-code](https://github.com/liu-x27/mini-claude-code) takes it this way:
 
 ```sh
-npm install github:liu-x27/XavierJev#v0.1.0
+npm install github:liu-x27/XavierJev#v0.2.0
 ```
 
 ```ts
