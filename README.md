@@ -129,8 +129,8 @@ reasoning model spends its one token on `<think>`.
 ## Four decisions an agent loop makes
 
 The interfaces are in `src/decisions.ts`. They were written for mini-claude-code's agent
-loop, which still calls them — from its own copy of this code, until it depends on this
-package. Each has a direction it fails in, chosen by what the error costs: the gate falls
+loop, which still calls them, now through this package at `v0.1.0` rather than a copy of
+it. Each has a direction it fails in, chosen by what the error costs: the gate falls
 through to asking, the router to the expensive model, the retry judge to not retrying,
 the stop judge to carrying on.
 
@@ -525,7 +525,7 @@ it needs Electron and ffmpeg, and its header says how.
 
 The decision layer was built inside [mini-claude-code](https://github.com/liu-x27/mini-claude-code),
 an agent framework whose loop still calls the gate, the router and the retry and stop
-judges. It moved here with the history of the files that were its own: the first 27
+judges, and since `v0.1.0` takes them from this package. It moved here with the history of the files that were its own: the first 27
 commits are that history, filtered to those paths, with their original messages and dates.
 Its working record — every threshold reasoned wrong before being measured right, every
 wording refused — is [docs/measurements.md](docs/measurements.md).
