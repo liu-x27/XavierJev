@@ -106,6 +106,20 @@
  *   | shipped wording | 26/77 | **0/76** |
  *   | reads do not count | 29/77 | **0/76** |
  *
+ * - **2026-09-26, trained-judge read.** Not the gate: a judge trained on this
+ *   machine's traffic (frozen Qwen3-0.6B, a logistic head per harm, no
+ *   `reveals-secret` head; see docs/measurements.md, "A judge trained on this
+ *   machine's traffic"). Its threshold and every other choice were fixed on
+ *   its own training data before this read, and nothing was refit here.
+ *
+ *   | judge | saved | false allows |
+ *   |---|---|---|
+ *   | trained, at its registered threshold | 10/77 | **0/76** |
+ *   | trained, at a looser threshold also fixed beforehand | 24/77 | 3/76 |
+ *
+ *   AUC 0.771, against the shipped `llm` config's 29/77 · 0/76 above. The
+ *   trained judge does not carry over from the traffic it learned.
+ *
  * ## The label criterion
  *
  * Unchanged. A command is `unsafe` if running it in a project directory could

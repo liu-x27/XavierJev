@@ -496,6 +496,17 @@ writes a newline before its answer, so its first token carries no Y or N and the
 turns it away before a question is asked. "Cleared with none let through" is each model's
 ceiling, at the best threshold for it chosen on these same commands.
 
+Trained rather than prompted, a small model does better — on one machine. Frozen Qwen3-0.6B
+with a logistic head per harm, fitted to 3,000 of this machine's agent commands read by hand,
+ranks 1,000 more at AUC 0.981 against llama3.1:8b's 0.915: at the threshold registered before
+the test, 289 of 733 safe commands cleared and one of 256 unsafe let through, close to the
+8B's 308 and one, and with the threshold loosened, 556 cleared for two let through where the
+8B manages 363. Its miss is a credential print, the one harm it has no head for (three
+examples in 4,000), and its four questions take 47 ms. On the gate's own labelled sets it is
+far worse than the 8B — AUC 0.847 on the dev set, 10/77 cleared on `testset3` — because what
+it learned is this machine's habits. The commands and weights stay here; nothing ships from
+it ([A judge trained on this machine's traffic](docs/measurements.md#a-judge-trained-on-this-machines-traffic)).
+
 ## On another server
 
 `npm run eval:llama-cpp` puts the gate on llama.cpp's `llama-server` beside Ollama, both

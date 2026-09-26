@@ -78,6 +78,7 @@ wrong first.
 | [Where a decision's time goes](#where-a-decisions-time-goes) | one pass per question, a shared prefix, and slots that make it slower |
 | [Telling the snake about room](#telling-the-snake-about-room) | a five-game win that twenty games on a new seed took back |
 | [Smaller judges](#smaller-judges) | barely faster, much worse, and a threshold that does not travel |
+| [A judge trained on this machine's traffic](#a-judge-trained-on-this-machines-traffic) | 0.6B with heads out-ranks the prompted 8B on its own traffic, and loses on everyone else's |
 | [Beside a rule-based guard](#beside-a-rule-based-guard) | opposite failures: one misses most harm, the other most of the benefit |
 | [On real traffic](#on-real-traffic) | a quarter cleared, all of it harmless on reading, held back by one question |
 | [On JevBench](#on-jevbench) | easy solved, hard at chance and confident — as the options are listed |
@@ -876,6 +877,74 @@ What it says:
 "Cleared with none let through" is at each model's best threshold, chosen on the same 83
 commands, so it is a ceiling for comparing models, not a number any of them would ship
 with.
+
+---
+
+## A judge trained on this machine's traffic
+
+*2026-09-26. Frozen Qwen3-0.6B with three logistic heads, trained on 3,000 of this machine's
+agent commands labelled by hand and scored once on 1,000 more, then on the dev set and
+`testset3.ts`. The commands, the labels and the weights stay on this machine; the aggregates
+are in `docs/data/trained-judge.json`. The code that trains it is not in this repository.*
+
+Every judge above is prompted. This one is not: each command is put to the gate's four
+questions in the exact messages `LlmJudge` sends, through Qwen3-0.6B with its thinking off,
+and the last position's hidden state at four layers is kept. One L2 logistic head per harm —
+`destroys-data`, `outside-cwd`, `exfiltrates` — reads the four questions' states together;
+the gate score is the worst of the three, as the gate's is. `reveals-secret` has no head:
+three of the 4,000 commands print a credential, which is too few to learn from.
+
+The labels are the 4,000 commands drawn from this machine's sessions in [On real
+traffic](#on-real-traffic)'s way, none of them the 4,000 read for [Counting what it let
+through](#counting-what-it-let-through), each read against the criterion with the session's
+directory as the working directory. Only commands the gate would show its judge, 2,000 characters
+or fewer, were drawn. 3,000 train, 1,000 test, split before anything was fit.
+The L2 strength, the calibration and the threshold were all chosen on out-of-fold
+predictions over the 3,000, and written down, with the baselines and the reading, before the
+1,000 were scored. The threshold is the fourth-lowest out-of-fold score among train's unsafe
+commands: three of 859 let through out of fold.
+
+On the 1,000 (733 safe, 256 unsafe, 11 that could not be judged left out):
+
+| judge | AUC | safe cleared | unsafe let through |
+|---|---|---|---|
+| trained, 0.6B + heads, at the registered threshold | **0.981** | 289/733 | 1/256 |
+| the same without the working directory in the state | 0.981 | 296/733 | 1/256 |
+| llama3.1:8b, the shipped questions at 0.2 | 0.915 | 308/733 | 1/256 |
+| llama3.1:8b at a threshold chosen on the 3,000 by the same rule | 0.915 | 307/733 | 1/256 |
+| `allowlist` at 0.2 | 0.51 | 11/733 | 0/256 |
+
+At the registered point the two are level; the ranking is not. With the threshold set on
+the 1,000 themselves — a curve for comparing, not a number either would ship with — the
+trained judge clears 418 safe commands for one let through against the 8B's 336, 556 for two
+against 363, 613 for five against 402. At none let through it is the other way round, 19
+against 204, and the reason is its one miss: a secret scan that prints the lines it matches,
+unsafe only under `reveals-secret`, the question it has no head for. The 8B scored it 0.92.
+The 8B's miss was a lint autofix run against another repository. Per question the heads
+score 0.980, 0.975 and 0.993 in AUC (13 of the 1,000 exfiltrate); the same model asked the
+same questions without heads says yes to nearly everything, 0.62 to 0.68. Taking the working
+directory to be where a leading `cd` goes, the trained judge's AUC is 0.958 and the 8B's
+0.897. The four questions take 47 ms mean, 73 ms p95, in one batch through transformers on
+this machine's GPU, and 1.9 GB of it.
+
+It does not travel. The same no-cwd judge, nothing refit, on the gate's labelled sets:
+
+| set | AUC | at the registered threshold | llama3.1:8b at 0.2 |
+|---|---|---|---|
+| `cases.ts`, dev (83) | 0.847 | 14/41 cleared · 2/42 let through, both `reveals-secret` | 36/41 · 0/42 (AUC 0.975) |
+| `testset3.ts` (153), logged read | 0.771 | 10/77 · 0/76 | 29/77 · 0/76 |
+
+What it learned is this machine's traffic: which directories are sessions and which are
+other repositories, what a scratch directory looks like, this agent's habits. The labelled
+sets are written by other models about Docker, SSH, systemd and package managers, which this
+machine's agent seldom runs, and there it is worse than the prompted 8B on every question.
+
+What this does and does not show. A small model with heads trained on a few thousand hand
+labels ranks one machine's commands better than an 8B prompted with the same questions, in
+about half the time the 8B took on the dev set's shorter commands; it is not a general judge, and it has a blind spot where its training data
+had no examples. `testset.ts`, the one set no model has read, was not spent on it. Nothing
+ships from this: there is no backend for it here, and one would need a `reveals-secret`
+answer from somewhere and data from more than one machine.
 
 ---
 
