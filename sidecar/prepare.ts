@@ -7,7 +7,9 @@
  * In: one JSON object per line, `{ command, cwd?, labels: { "destroys-data": 0|1, … } }` — a
  * question id missing from `labels` is unknown and left out of that question's training.
  * Out: `{ state, labels, unsafe, secret }` per line, and beside it `<rows>.questions.json`, the
- * wording of the questions the judge is trained on. `unsafe` is any label at 1 (or null when a
+ * wording of the questions the judge is trained on, and `<rows>.meta.json`, whether the states
+ * include scripts, which train.py records so the hook can tell a judge run the way it was
+ * trained from one that is not. `unsafe` is any label at 1 (or null when a
  * question is unknown and none is 1) and `secret` is whether the gate's word list for
  * `reveals-secret` matches the command, since that question is answered by the list.
  */
@@ -41,4 +43,5 @@ writeFileSync(output, `${out.join("\n")}\n`);
 // The wording train.py trains on and serve.py insists on: the gate's, minus the one the word list answers.
 const questions = Object.fromEntries(RISK_QUESTIONS.filter((q) => q.id !== "reveals-secret").map((q) => [q.id, q.ask]));
 writeFileSync(`${output.replace(/\.jsonl$/, "")}.questions.json`, `${JSON.stringify(questions, null, 1)}\n`);
+writeFileSync(`${output.replace(/\.jsonl$/, "")}.meta.json`, `${JSON.stringify({ readScripts })}\n`);
 console.log(`${out.length} rows -> ${output}${readScripts ? `, ${withScript} with a script` : ""}`);

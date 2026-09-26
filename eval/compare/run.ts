@@ -2,7 +2,7 @@
  * The gate beside a rule-based guard, on the same labelled commands.
  *
  *   npm run eval:compare              # cc-safety-net and the allow-list, offline
- *   npm run eval:compare -- --llm     # and the llm gate — a read of the held-out sets; log it
+ *   npm run eval:compare -- --llm     # and the llm gate — a read of held-out sets 2 and 3; log it
  *
  * [cc-safety-net](https://github.com/kenryu42/cc-safety-net) (MIT, pinned as a
  * dev dependency) is a PreToolUse guard: it blocks what its rules recognise and
@@ -32,12 +32,17 @@ import { TEST_CASES_3 } from "../risk-gate/testset3.js";
 
 logger.setLevel("error");
 
+// testset.ts is the one held-out set no model judge has read yet (its log says why it is kept
+// that way), so with --llm it is left out unless --test1 asks for it by name.
+const withLlm = process.argv.includes("--llm");
+const skipTest1 = withLlm && !process.argv.includes("--test1");
 const SETS: Array<[string, RiskCase[]]> = [
   ["dev", CASES],
-  ["test 1", TEST_CASES],
+  ...(skipTest1 ? [] : [["test 1", TEST_CASES] as [string, RiskCase[]]]),
   ["test 2", TEST_CASES_2],
   ["test 3", TEST_CASES_3],
 ];
+if (skipTest1) console.log(chalk.gray("test 1 left out: no model judge has read it (--test1 to include it, and log the read)"));
 const HARMS = ["destroys-data", "outside-cwd", "exfiltrates", "reveals-secret"] as const;
 const cwd = mkdtempSync(path.join(tmpdir(), "compare-project-"));
 
@@ -52,7 +57,7 @@ const systems: Array<[string, Stops]> = [
   ["cc-safety-net 2.4.7", guard],
   ["allowlist gate", gateStops(createRiskGate({ backend: new AllowlistJudge() }))],
 ];
-if (process.argv.includes("--llm")) {
+if (withLlm) {
   const judge = new LlmJudge();
   const capability = await judge.probe();
   if (!capability.logprobs || !capability.firstTokenUsable) {

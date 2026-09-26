@@ -43,6 +43,7 @@ import {
   createRiskGate,
   GATE_CANARIES,
   GATE_RECORDED_ON,
+  type GateCanary,
   gateState,
   RISK_QUESTIONS,
 } from "../src/gate.js";
@@ -50,7 +51,7 @@ import { LlmJudge } from "../src/llm.js";
 import { createRetryJudge, patternRetryJudge } from "../src/retry.js";
 import { createModelRouter } from "../src/router.js";
 import { scriptsRun } from "../src/scripts.js";
-import { SECRET_WORDS, SidecarJudge } from "../src/sidecar.js";
+import { recordingProblems, SECRET_WORDS, SidecarJudge, type SidecarInfo } from "../src/sidecar.js";
 import { casesNeeded, upperBound } from "../eval/stats.js";
 import { decide } from "../integrations/claude-code/decide.js";
 import { anyStopJudge, createRepeatStopJudge, createStopJudge } from "../src/stop.js";
@@ -233,6 +234,13 @@ await checkAsync("命令长到判断器只能看到开头时，不问判断器�
   });
   if (fits.action !== "allow" || asked() !== 1)
     throw new Error(`放得下的命令照常判断: ${fits.action}, ${asked()} 次`);
+});
+
+await checkAsync("输入渲染不出来（循环引用）时闸门转问用户，不向宿主抛错", async () => {
+  const input: Record<string, unknown> = { command: "ls" };
+  input.self = input;
+  const v = await createRiskGate({ backend: fakeJudge(0.01) })({ toolName: "Bash", input, description: "ls" });
+  if (v.action !== "ask" || !/could not build/.test(v.reason)) throw new Error(`${v.action}: ${v.reason}`);
 });
 
 await checkAsync("默认阈值是 0.2", async () => {
@@ -794,6 +802,31 @@ await checkAsync('rubric({ orders: "all" })：低到高、高到低各问一次�
   }
 });
 
+await checkAsync("choice 的 id 重复、rubric 的分数重复或不是有限数，直接报错，不去问模型", async () => {
+  const fake = await fakeLogprobEndpoint([{ token: "A", p: 1 }]);
+  try {
+    const refused = async (run: () => Promise<unknown>, pattern: RegExp) => {
+      const message = await run().then(
+        () => "no error",
+        (err: Error) => err.message,
+      );
+      if (!pattern.test(message)) throw new Error(`应当报错: ${message}`);
+    };
+    const twins = [
+      { id: "same", text: "one" },
+      { id: "same", text: "two" },
+    ];
+    await refused(() => fake.judge.choice({}, "?", twins), /distinct ids/);
+    await refused(() => fake.judge.choice({}, "?", twins, { orders: "all" }), /distinct ids/);
+    const level = (score: number) => ({ score, text: String(score) });
+    await refused(() => fake.judge.rubric({}, "?", [level(1), level(1)]), /distinct finite/);
+    await refused(() => fake.judge.rubric({}, "?", [level(1), level(Number.NaN)]), /distinct finite/);
+    if (fake.bodies.length !== 0) throw new Error(`不该发出请求: ${fake.bodies.length}`);
+  } finally {
+    await fake.close();
+  }
+});
+
 // ─────────────────────────────────────────────
 // 7. Stop judge
 // ─────────────────────────────────────────────
@@ -1052,10 +1085,10 @@ await checkAsync(
 );
 
 await checkAsync(
-  "自检：放行了一条必须拦的命令就判不安全；判断器挂了只算走样（反正都会问）",
+  "自检：放行了一条必须拦的命令就判不安全；判断器挂了不算不安全，但算未验证（什么都没答，证明不了什么）",
   async () => {
     const lax = await checkGate(createRiskGate({ backend: fakeJudge(0.01) }));
-    if (!lax.unsafe || !lax.problems.some((p) => p.includes("rm -rf src")))
+    if (!lax.unsafe || !lax.verified || !lax.problems.some((p) => p.includes("rm -rf src")))
       throw new Error(`应当判不安全: ${JSON.stringify(lax.problems)}`);
     const down = await checkGate(
       createRiskGate({
@@ -1067,34 +1100,49 @@ await checkAsync(
         },
       }),
     );
-    if (down.asMeasured || down.unsafe || down.shift !== undefined)
+    if (down.asMeasured || down.unsafe || down.verified || down.shift !== undefined)
       throw new Error(`挂了: ${JSON.stringify(down.problems)}`);
+    const same = await checkGate(createRiskGate({ backend: recordedJudge(0) }));
+    if (!same.verified) throw new Error(`原样的判断器应当算已验证: ${JSON.stringify(same.problems)}`);
   },
 );
 
 await checkAsync(
-  "自检：后端报出的模型摘要和录制时一致才算原样；不一致只算走样；自定义金丝雀不比摘要",
+  "自检：后端报出的模型摘要和录制时一致才算原样；不一致或说不出自己是谁算未验证；自定义金丝雀不比摘要",
   async () => {
     const withDigest = (digest: string): JudgeBackend => ({
       ...recordedJudge(0),
       identify: async () => ({ model: "llama3.1:8b", digest, detail: "test" }),
     });
     const same = await checkGate(createRiskGate({ backend: withDigest(GATE_RECORDED_ON.digest) }));
-    if (!same.asMeasured || same.identity?.digest !== GATE_RECORDED_ON.digest)
+    if (!same.asMeasured || !same.verified || same.identity?.digest !== GATE_RECORDED_ON.digest)
       throw new Error(`摘要一致: ${JSON.stringify(same.problems)}`);
     const other = await checkGate(createRiskGate({ backend: withDigest("0".repeat(64)) }));
     if (
       other.asMeasured ||
       other.unsafe ||
+      other.verified ||
       !other.problems.some((p) => p.includes("not the llama3.1:8b"))
     ) {
-      throw new Error(`摘要不一致应当只算走样: ${JSON.stringify(other.problems)}`);
+      throw new Error(`摘要不一致应当算未验证、但不算不安全: ${JSON.stringify(other.problems)}`);
     }
+    const mute = await checkGate(
+      createRiskGate({
+        backend: {
+          ...recordedJudge(0),
+          identify: async () => {
+            throw new Error("no /api/tags");
+          },
+        },
+      }),
+    );
+    if (mute.verified || mute.unsafe || !mute.problems.some((p) => p.includes("would not say")))
+      throw new Error(`说不出自己是谁应当算未验证: ${JSON.stringify(mute.problems)}`);
     const custom = await checkGate(
       createRiskGate({ backend: withDigest("0".repeat(64)) }),
       GATE_CANARIES.slice(0, 3),
     );
-    if (!custom.asMeasured)
+    if (!custom.asMeasured || !custom.verified)
       throw new Error(`自定义金丝雀不该比摘要: ${JSON.stringify(custom.problems)}`);
   },
 );
@@ -1231,6 +1279,8 @@ check("scriptsRun()：认出命令直接跑的本地脚本，展开变量、按 
     ["npm run build", scriptDir, []],
     ['node -e "console.log(1)"', scriptDir, []],
     ["python patch.py", undefined, []], // relative, and no working directory to take it from
+    // a relative cd moves from the working directory, not from nowhere
+    [`cd ${path.basename(scriptDir)} && python patch.py`, path.dirname(scriptDir), [want]],
   ];
   for (const [command, cwd, expected] of cases) {
     const got = scriptsRun(command, cwd).map((f) => path.normalize(f));
@@ -1329,6 +1379,52 @@ await checkAsync("SidecarJudge：没训练过的问题、sidecar 挂了，都是
   const dead = new SidecarJudge({ url: "http://127.0.0.1:9", timeoutMs: 500 });
   const v = await createRiskGate({ backend: dead, autoAllowBelow: 0.03 })({ toolName: "Bash", input: { command: "ls" }, description: "ls" });
   if (v.action !== "ask") throw new Error(`sidecar 不在: ${v.action}`);
+});
+
+await checkAsync("SidecarJudge：身份每次现问，不用缓存；带 /g 的词表不会一次认一次不认", async () => {
+  const live: Record<string, unknown> = {};
+  const fake = await fakeSidecar({ "destroys-data": 0.01 }, live);
+  try {
+    if ((await fake.judge.identify()).digest !== "abc123") throw new Error("第一次身份不对");
+    live.digest = "def456"; // restarted on other weights
+    if ((await fake.judge.identify()).digest !== "def456") throw new Error("identify() 还在用旧的身份");
+  } finally {
+    await fake.close();
+  }
+  const judge = new SidecarJudge({ url: "http://127.0.0.1:9", secretWords: /\.env\b/gi });
+  const secretOnly = RISK_QUESTIONS.filter((q) => q.id === "reveals-secret");
+  for (let i = 1; i <= 3; i++) {
+    const [answer] = await judge.noul({ tool: "Bash", command: "cat .env" }, secretOnly);
+    if (answer?.probability !== 1) throw new Error(`第 ${i} 次没认出 cat .env`);
+  }
+});
+
+check("recordingProblems：金丝雀录制时的身份、阈值、词表、是否看脚本，和现在对不上都算未验证", () => {
+  const canaries: GateCanary[] = [{ command: "ls", expect: "allow", recorded: 0.01 }];
+  const info: SidecarInfo = {
+    model: "m",
+    digest: "d",
+    detail: "",
+    questions: [],
+    threshold: 0.03,
+    readScripts: false,
+    recording: { recordedOn: { model: "m", digest: "d" }, threshold: 0.03, secretWords: SECRET_WORDS.source, canaries },
+  };
+  const clean = recordingProblems(info, { readScripts: false });
+  if (clean.length) throw new Error(`一致时不该有问题: ${clean}`);
+  const { recording: _, ...unrecorded } = info;
+  const cases: Array<[string, SidecarInfo, { readScripts: boolean; secretWords?: RegExp }, RegExp]> = [
+    ["0.7.0 之前的文件", { ...info, recording: { canaries } }, { readScripts: false }, /without the judge's identity/],
+    ["阈值变了", { ...info, threshold: 0.05 }, { readScripts: false }, /recorded at threshold 0.03/],
+    ["词表变了", info, { readScripts: false, secretWords: /secret/ }, /word list/],
+    ["训练时没看脚本，现在看", info, { readScripts: true }, /they are being shown/],
+    ["没记录是否看脚本", { ...info, readScripts: null }, { readScripts: false }, /read_scripts/],
+    ["没有金丝雀", unrecorded, { readScripts: false }, /no recorded canaries/],
+  ];
+  for (const [name, i, live, pattern] of cases) {
+    const got = recordingProblems(i, live);
+    if (!got.some((p) => pattern.test(p))) throw new Error(`${name}: ${JSON.stringify(got)}`);
+  }
 });
 
 // ─────────────────────────────────────────────

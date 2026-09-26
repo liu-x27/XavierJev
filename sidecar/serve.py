@@ -2,14 +2,18 @@
 
     python sidecar/serve.py --run sidecar/run [--port 8765] [--canaries sidecar/run/canaries.json]
 
-GET  /identify  -> {model, digest, detail, questions, threshold, canaries}
+GET  /identify  -> {model, digest, detail, questions, threshold, readScripts, modelRevision, recording}
 POST /noul      {state, questions: [{id, ask}]} -> {answers: [{id, probability}]}
 
 It answers only the questions it was trained on, and only in the wording it was trained on: a
 question whose text differs from calibration.json's is refused with HTTP 400, which the gate
 treats as a judge failure and asks the user — a judge asked a question it never learned is not
-the judge that was measured. The digest covers the base model name, the adapters and the
-calibration, so the gate's self-check notices when any of them changes.
+the judge that was measured. The digest covers the base model's name and revision, the adapters
+and the calibration, so the gate's self-check notices when any of them changes; and adapters
+trained on one revision of the base model are not served on another.
+
+`recording` is the canaries file as `npm run sidecar:canaries` wrote it, passed through: the
+hook compares what it says they were recorded on with this judge, not this judge with itself.
 """
 import argparse
 import json
@@ -33,21 +37,33 @@ def main():
     cal_path = os.path.join(a.run, "calibration.json")
     with open(cal_path, encoding="utf-8") as f:
         cal = json.load(f)
-    canaries = None
-    if a.canaries and os.path.exists(a.canaries):
+    recording = None
+    if a.canaries:
         with open(a.canaries, encoding="utf-8") as f:
-            canaries = json.load(f)
+            recording = json.load(f)
+        if isinstance(recording, list):  # written before 0.7.0: canaries without what they were recorded on
+            recording = {"canaries": recording}
     tok, model = common.load(cal["model"], adapter, cal.get("rank"), a.device)
+    revision = common.model_revision(cal["model"], model)
+    trained_on = cal.get("model_revision")
+    if trained_on and trained_on != revision:
+        sys.exit(f"{cal['model']} is now revision {revision}, and these adapters were trained on {trained_on}")
     lock = threading.Lock()
     info = {
         "model": f"{cal['model']}+lora",
-        "digest": common.digest(cal["model"], adapter, cal_path),
-        "detail": f"{cal['model']} with rank-{cal.get('rank')} adapters from {os.path.abspath(a.run)}",
+        "digest": common.digest(cal["model"], revision, adapter, cal_path),
+        "detail": f"{cal['model']} ({revision[:12]}) with rank-{cal.get('rank')} adapters from {os.path.abspath(a.run)}",
         "questions": list(cal["questions"]),
         "threshold": cal["threshold"],
+        "readScripts": cal.get("read_scripts"),
+        "modelRevision": revision,
     }
-    if canaries:
-        info["canaries"] = canaries
+    if recording:
+        info["recording"] = recording
+    recorded_on = (recording or {}).get("recordedOn") or {}
+    if recording and recorded_on.get("digest") != info["digest"]:
+        print("warning: the canaries were not recorded on this judge (digest differs or is missing); the hook will"
+              " refuse to start until they are recorded again with `npm run sidecar:canaries`", flush=True)
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
@@ -95,7 +111,7 @@ def main():
 
     server = ThreadingHTTPServer(("127.0.0.1", a.port), Handler)
     print(f"sidecar judge at http://127.0.0.1:{a.port} · {info['detail']} · threshold {info['threshold']}"
-          f" · digest {info['digest'][:12]} · canaries {'yes' if canaries else 'none yet'}", flush=True)
+          f" · digest {info['digest'][:12]} · canaries {'yes' if recording else 'none yet'}", flush=True)
     server.serve_forever()
 
 

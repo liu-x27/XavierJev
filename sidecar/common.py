@@ -85,6 +85,12 @@ def load(model_name, adapter=None, rank=None, device="cuda"):
         bad = model.load_state_dict(state, strict=False).unexpected_keys
         if bad:
             raise ValueError(f"adapter keys the model does not have: {bad[:3]}")
+        # strict=False also forgives the opposite, an adapter file missing some of the model's
+        # adapters, which would leave those at their initial values and serve a different judge.
+        wanted = [k for k in model.state_dict() if k.endswith(".A") or k.endswith(".B")]
+        missing = [k for k in wanted if k not in state]
+        if missing:
+            raise ValueError(f"the adapter file lacks {len(missing)} of the model's {len(wanted)} adapter tensors: {missing[:3]}")
         merge_lora(model)
     model.eval()
     return tok, model
@@ -118,12 +124,32 @@ def calibrated(margin, platt):
     return 1.0 / (1.0 + math.exp(-(a * margin + b)))
 
 
-def digest(*paths_or_texts):
+def model_revision(model_name, model):
+    """Which weights `model_name` resolved to: the hub snapshot's commit when it came from the hub
+    cache, else a hash of a local model directory's weight and config files. A name alone says
+    nothing about the weights behind it once the cache is updated."""
+    rev = getattr(model.config, "_commit_hash", None)
+    if rev:
+        return rev
+    if os.path.isdir(model_name):
+        h = hashlib.sha256()
+        for name in sorted(os.listdir(model_name)):
+            if name.endswith((".safetensors", ".bin")) or name == "config.json":
+                with open(os.path.join(model_name, name), "rb") as f:
+                    for chunk in iter(lambda: f.read(1 << 20), b""):
+                        h.update(chunk)
+        return "sha256:" + h.hexdigest()
+    return "unknown"
+
+
+def digest(model_name, revision, *files):
+    """One hash over the base model's name and revision and the bytes of each file (the adapters,
+    the calibration), so that a change to any of them changes it."""
     h = hashlib.sha256()
-    for x in paths_or_texts:
-        if os.path.exists(str(x)):
-            with open(x, "rb") as f:
-                h.update(f.read())
-        else:
-            h.update(str(x).encode("utf-8"))
+    for text in (model_name, revision):
+        h.update(str(text).encode("utf-8"))
+        h.update(b"\0")
+    for path in files:
+        with open(path, "rb") as f:
+            h.update(f.read())
     return h.hexdigest()

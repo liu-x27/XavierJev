@@ -205,15 +205,23 @@ export function createRiskGate(options: RiskGateOptions): RiskGate & { readonly 
   const questions = options.questions ?? RISK_QUESTIONS;
 
   const gate = async (request: PermissionRequest): Promise<GateVerdict> => {
-    // Shown only its start, a judge can clear what it read and never see the
-    // rest: the tail of a long script is where a cut would hide anything.
-    const long = tooLong(request, maxValueChars);
-    if (long) {
-      const reason = `${long.key} is ${long.length} characters, more than the ${maxValueChars} the judge is shown`;
+    let state: JudgeState;
+    try {
+      // Shown only its start, a judge can clear what it read and never see the
+      // rest: the tail of a long script is where a cut would hide anything.
+      const long = tooLong(request, maxValueChars);
+      if (long) {
+        const reason = `${long.key} is ${long.length} characters, more than the ${maxValueChars} the judge is shown`;
+        return { action: "ask", probability: undefined, reason, threshold: autoAllowBelow };
+      }
+      state = gateState(request, options);
+    } catch (err) {
+      // An input that will not render (a cycle, a BigInt) is the host's odd
+      // call, not a reason to throw at it: the user decides, as on any failure.
+      const reason = `could not build the judge's state: ${err instanceof Error ? err.message : String(err)}`;
+      logger.warn(`Risk gate falling through to the user — ${reason}`);
       return { action: "ask", probability: undefined, reason, threshold: autoAllowBelow };
     }
-
-    const state = gateState(request, options);
     const started = Date.now();
 
     let answers: { id: string; probability: number }[];
@@ -402,6 +410,14 @@ export interface GateCheck {
    */
   unsafe: boolean;
   /**
+   * The check heard from the judge it was meant to check: every canary got an
+   * answer, and the backend neither failed to say which model it is nor
+   * named a different one from `recordedOn`. An unverified gate may be fine,
+   * but nothing measured says so, and a gate that answers nothing proves
+   * nothing by never being caught allowing.
+   */
+  verified: boolean;
+  /**
    * How far the cleared canaries' worst answers moved from their recorded
    * values, as the mean change in log-odds; undefined when none answered.
    * Negative is towards allowing.
@@ -444,14 +460,19 @@ const logOdds = (p: number) => {
  * together, and all three can change without any error: a different model
  * behind the same name, a different quantisation, a prompt that someone
  * tidied. Hosts call this once at startup, with the gate they are about to
- * use. `unsafe` means do not use it; not `asMeasured` means it is safe but
- * no longer the gate that was measured, and its threshold wants measuring
- * again (`npm run eval:risk-gate`).
+ * use. `unsafe` means do not use it. Not `verified` means the check could not
+ * tell that this is the judge that was measured — a canary went unanswered,
+ * or the backend could not say or named another model — and a host that
+ * clears commands should not start on it without being told to. Verified and
+ * safe but not `asMeasured` means it only asks more than was measured, and
+ * its threshold wants measuring again (`npm run eval:risk-gate`).
  *
  * The canaries only bound how far the scores moved. When the backend can
  * name the exact model it serves (`identify`), the check also compares that
  * digest with `recordedOn`, which defaults to the judge the built-in canaries
- * were recorded on; custom canaries pass their own, or nothing to skip it.
+ * were recorded on; custom canaries pass their own, or nothing to skip it. A
+ * backend that reports no digest at all (an endpoint that is not Ollama) is
+ * not a mismatch: there the canaries are the whole check.
  */
 export async function checkGate(
   gate: RiskGate & { readonly backend?: JudgeBackend },
@@ -463,17 +484,24 @@ export async function checkGate(
   const results: GateCheck["results"] = [];
   const problems: string[] = [];
   let unsafe = false;
+  let verified = true;
 
   // Before any score: a different model or template under the same name is
   // not the gate that was measured, whatever its canaries say. Only when the
   // endpoint reports a digest; the canaries below are the check that always runs.
-  const identity = await gate.backend?.identify?.().catch(
-    (err: unknown): JudgeIdentity => ({
-      model: "unknown",
-      detail: `identify failed: ${err instanceof Error ? err.message : String(err)}`,
-    }),
-  );
+  let identity: JudgeIdentity | undefined;
+  try {
+    identity = await gate.backend?.identify?.();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    identity = { model: "unknown", detail: `identify failed: ${message}` };
+    if (recordedOn) {
+      verified = false;
+      problems.push(`the judge would not say which model it is (${message}), so it cannot be compared with ${recordedOn.model}`);
+    }
+  }
   if (recordedOn && identity?.digest && identity.digest !== recordedOn.digest) {
+    verified = false;
     problems.push(
       `the judge is ${identity.model} at ${identity.digest.slice(0, 12)}, not the ${recordedOn.model} at ` +
         `${recordedOn.digest.slice(0, 12)} the canaries were recorded on`,
@@ -484,6 +512,7 @@ export async function checkGate(
     const verdict = await gate({ toolName: "Bash", input: { command: canary.command }, description: canary.command });
     results.push({ ...canary, action: verdict.action, probability: verdict.probability });
     if (verdict.probability === undefined) {
+      verified = false;
       problems.push(`no answer for \`${canary.command}\`: ${verdict.reason}`);
     } else if (canary.expect === "ask" && verdict.action === "allow") {
       unsafe = true;
@@ -504,5 +533,5 @@ export async function checkGate(
     );
   }
 
-  return { asMeasured: problems.length === 0, unsafe, shift, identity, problems, results };
+  return { asMeasured: problems.length === 0, unsafe, verified, shift, identity, problems, results };
 }

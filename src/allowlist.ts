@@ -16,8 +16,12 @@ const SAFE_PROBABILITY = 0.02;
  * An *allow*-list, not a deny-list, and the direction is the whole point. A
  * deny-list is a list of the destructive commands you thought of, so its
  * failure mode is to wave through the one you did not — which is exactly the
- * mistake the gate exists to prevent. This one can only be wrong in the
- * direction of asking the user about something that was in fact fine.
+ * mistake the gate exists to prevent. This one is built to be wrong only in
+ * the direction of asking the user about something that was in fact fine —
+ * but that does not yet hold for every argument form: a review on 2026-09-26
+ * found path and option forms it clears and should not, which a per-program
+ * argument grammar is meant to fix. Until then treat it as a convenience that
+ * measured well on the labelled sets, not as a boundary.
  *
  * It buys that property by being shallow: it does not know what a command
  * means, only that `git log` is on a list and `git push` is not. It is the

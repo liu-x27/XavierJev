@@ -1,4 +1,5 @@
 import { readFileSync, statSync } from "node:fs";
+import { homedir } from "node:os";
 import path from "node:path";
 
 /**
@@ -13,7 +14,8 @@ import path from "node:path";
  * Recognised: an interpreter (python, py, node, tsx, deno, bun, bash, sh, zsh) followed, after
  * any flags, by a path ending in .py, .js, .mjs, .cjs, .ts, .mts or .sh. `NAME=value`
  * assignments earlier in the command are substituted into `$NAME/…` paths; a relative path is
- * taken from a leading `cd` if there is one, else from the working directory. On Windows, Git
+ * taken from a leading `cd` if there is one (itself taken from the working directory when it
+ * is relative), else from the working directory. On Windows, Git
  * Bash's `/c/…` becomes `C:/…`. Anything else — `npm run`, a module name, a script generated
  * in the same command — is not a file to read, and is left to the command text.
  */
@@ -25,7 +27,14 @@ export function scriptsRun(command: string, cwd?: string): string[] {
     env.set(m[1]!, unquote(m[2]!));
   }
   const cd = /^\s*cd\s+("[^"]+"|'[^']+'|[^\s;&|]+)/.exec(command);
-  const base = cd ? toNative(unquote(cd[1]!)) : cwd;
+  let base = cwd;
+  if (cd) {
+    // `cd sidecar && python common.py` moves relative to where the command starts.
+    const raw = cd[1]!;
+    // The shell expands an unquoted leading ~ and nothing else.
+    const dir = toNative(raw.startsWith("~") ? raw.replace(/^~(?=\/|$)/, homedir()) : unquote(raw));
+    base = path.isAbsolute(dir) ? dir : cwd && path.isAbsolute(cwd) ? path.join(cwd, dir) : undefined;
+  }
   const found: string[] = [];
   const runner =
     /(?:^|[\s;&|(`])(?:python3?|py|node|tsx|deno(?:\s+run)?|bun|bash|sh|zsh)(?:\.exe)?((?:\s+-[-\w=]+)*)\s+("[^"]+"|'[^']+'|[^\s;&|)`<>]+)/g;

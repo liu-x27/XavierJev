@@ -6,9 +6,10 @@
  * which is exactly the set of calls the gate was built for. The answer is
  * either "allow", which skips that prompt, or nothing at all, which leaves
  * Claude Code to ask as it would have. Never "deny": a denial the user never
- * sees looks, to the agent, like a tool that is broken, and a gate that can
- * only narrow what gets asked about cannot make anything less safe than
- * asking.
+ * sees looks, to the agent, like a tool that is broken. That leaves the gate
+ * one power, skipping a prompt, and so one mistake the user cannot see and
+ * correct: an allow that should have been a question. It is the number every
+ * measurement of the gate reports first, and it is not zero by construction.
  *
  * Three things are left to Claude Code untouched:
  *

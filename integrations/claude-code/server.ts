@@ -6,6 +6,7 @@
  *   npm run claude-code -- --observe                          # decide and log, never allow
  *   npm run claude-code -- --backend sidecar                  # a trained judge (sidecar/README.md)
  *   npm run claude-code -- --read-scripts                     # show the judge the scripts a command runs
+ *   npm run claude-code -- --allow-unverified                 # start on a judge the self-check cannot vouch for
  *
  * The plugin in plugins/xavierjev-gate points Claude Code's PermissionRequest
  * hook at this server over HTTP. Claude Code treats a hook it cannot reach,
@@ -14,8 +15,12 @@
  *
  * Before it answers anything the server makes sure it should: the judge must
  * return logprobs (`probe`), and the gate must pass its self-check
- * (`checkGate`) — a gate whose canaries show its scores moved towards
- * allowing is not started at all.
+ * (`checkGate`). A gate whose canaries show its scores moved towards allowing
+ * is not started at all. Nor, unless `--allow-unverified` is given, is one the
+ * check could not vouch for: a judge that did not answer the canaries, or that
+ * is a different model from the one they were recorded on, or a sidecar whose
+ * recording does not match how it is being run. `--observe` starts either
+ * way, since it never allows.
  *
  * Every request is written to a local JSONL log, the command included, so
  * that what the gate did across real sessions can be read afterwards. It
@@ -27,7 +32,7 @@ import path from "node:path";
 import express from "express";
 import { checkGate, createRiskGate, GATE_CANARIES, type GateCanary } from "../../src/gate.js";
 import { LlmJudge } from "../../src/llm.js";
-import { SidecarJudge } from "../../src/sidecar.js";
+import { recordingProblems, SidecarJudge } from "../../src/sidecar.js";
 import type { JudgeBackend } from "../../src/types.js";
 import { localOnly } from "../local-only.js";
 import { decide, type PermissionRequestInput } from "./decide.js";
@@ -41,6 +46,7 @@ const port = Number(arg("port") ?? process.env.PORT ?? 3003);
 const logPath = arg("log") ?? path.join(homedir(), ".xavierjev", "claude-code.jsonl");
 
 const readScripts = process.argv.includes("--read-scripts");
+const allowUnverified = process.argv.includes("--allow-unverified");
 
 // The shipped judge, or a trained one served by sidecar/serve.py, which brings its own threshold
 // and canaries: its probabilities are on its own scale.
@@ -48,20 +54,23 @@ let judge: JudgeBackend;
 let threshold = 0.2;
 let canaries: readonly GateCanary[] = GATE_CANARIES;
 let recordedOn: { model: string; digest: string } | undefined;
+let unverifiedSetup: string[] = [];
 if (arg("backend") === "sidecar") {
   const sidecar = new SidecarJudge({ url: arg("sidecar-url") ?? process.env.XAVIERJEV_SIDECAR_URL });
   const info = await sidecar.info().catch((err: unknown) => {
     console.error(`No sidecar: ${err instanceof Error ? err.message : String(err)} (start sidecar/serve.py first).`);
     process.exit(1);
   });
-  if (!info.canaries?.length) {
+  if (!info.recording?.canaries?.length) {
     console.error("The sidecar has no recorded canaries: run `npm run sidecar:canaries` once after training.");
     process.exit(1);
   }
   judge = sidecar;
   threshold = info.threshold;
-  canaries = info.canaries;
-  recordedOn = { model: info.model, digest: info.digest };
+  canaries = info.recording.canaries;
+  // What the canaries were recorded on, not what the sidecar says it is now: checkGate compares the two.
+  recordedOn = info.recording.recordedOn;
+  unverifiedSetup = recordingProblems(info, { readScripts });
 } else {
   if (!(process.env.AGENT_JUDGE_API_KEY || process.env.AGENT_JUDGE_BASE_URL)) {
     console.error("No judge: set AGENT_JUDGE_API_KEY, AGENT_JUDGE_BASE_URL and AGENT_JUDGE_MODEL (see .env.example).");
@@ -77,9 +86,18 @@ if (arg("backend") === "sidecar") {
 }
 const gate = createRiskGate({ backend: judge, autoAllowBelow: threshold, readScripts });
 const check = await checkGate(gate, canaries, recordedOn);
+const problems = [...unverifiedSetup, ...check.problems];
 if (check.unsafe) {
   console.error(`Refusing to start: the gate's self-check says it is unsafe with ${judge.name}.`);
-  for (const problem of check.problems) console.error(`  ${problem}`);
+  for (const problem of problems) console.error(`  ${problem}`);
+  process.exit(1);
+}
+const verified = check.verified && unverifiedSetup.length === 0;
+if (!verified && !observe && !allowUnverified) {
+  console.error(`Refusing to start: the self-check cannot vouch for ${judge.name} as the judge that was measured.`);
+  for (const problem of problems) console.error(`  ${problem}`);
+  console.error("Fix the above, or start with --observe to log without allowing, or --allow-unverified to clear");
+  console.error("commands anyway on a threshold nobody measured for this judge.");
   process.exit(1);
 }
 
@@ -126,8 +144,9 @@ app.listen(port, "127.0.0.1", () => {
   console.log(`   judge: ${judge.name} · threshold ${threshold} · ${observe ? "observing: decides and logs, never allows" : "clears what it scores safe"}`);
   if (readScripts) console.log("   scripts a command runs are shown to the judge (not how its threshold was measured, unless it was trained so)");
   const moved = check.shift === undefined ? "" : `, scores ${check.shift >= 0 ? "+" : ""}${check.shift.toFixed(2)} in log-odds`;
-  console.log(`   self-check: ${check.asMeasured ? "as measured" : "not the gate that was measured"}${moved}`);
-  for (const problem of check.asMeasured ? [] : check.problems) console.log(`      ${problem}`);
+  const standing = !verified ? "UNVERIFIED" : check.asMeasured ? "as measured" : "not the gate that was measured";
+  console.log(`   self-check: ${standing}${moved}`);
+  for (const problem of problems) console.log(`      ${problem}`);
   if (check.identity) console.log(`   model: ${check.identity.detail}`);
   console.log(`   log: ${logPath}\n`);
 });

@@ -219,6 +219,11 @@ export class LlmJudge implements JudgeBackend, ChoiceBackend, RubricBackend {
     if (options.length < 2 || options.length > CHOICE_LABELS.length) {
       throw new Error(`choice() takes 2 to ${CHOICE_LABELS.length} options, got ${options.length}`);
     }
+    // Answers are keyed by id, so two options with one id would be one answer holding both
+    // options' mass — and, averaged over orders, probabilities that no longer sum to one.
+    if (new Set(options.map((o) => o.id)).size !== options.length) {
+      throw new Error(`choice() options need distinct ids, got ${options.map((o) => o.id).join(", ")}`);
+    }
     const labels = [...CHOICE_LABELS.slice(0, options.length)];
     const said = listLabels(labels);
     const listed = options.map((o, i) => `${labels[i]}. ${o.text}`).join("\n");
@@ -311,6 +316,11 @@ export class LlmJudge implements JudgeBackend, ChoiceBackend, RubricBackend {
   ): Promise<Omit<RubricResult, "orders">> {
     if (levels.length < 2 || levels.length > 9) {
       throw new Error(`rubric() takes 2 to 9 levels, got ${levels.length}`);
+    }
+    // The mean and spread are computed from the scores, and the orders are matched by score.
+    const scores = levels.map((l) => l.score);
+    if (!scores.every(Number.isFinite) || new Set(scores).size !== scores.length) {
+      throw new Error(`rubric() levels need distinct finite scores, got ${scores.join(", ")}`);
     }
     const digits = levels.map((_, i) => String(i + 1));
     const said = `${digits[0]} to ${digits.at(-1)}`;

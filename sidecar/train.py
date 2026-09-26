@@ -14,7 +14,8 @@ then is anything calibrated: each question's margin gets a Platt fit on the vali
 the threshold is set on validation too — below the second-lowest gate score among the unsafe
 validation rows the word list does not already catch (one let through on validation). Written
 to --out: adapter.pt (the adapters, not merged) and calibration.json (questions with their exact
-wording and Platt parameters, the threshold and how it was chosen). The questions are
+wording and Platt parameters, the threshold and how it was chosen, the base model's revision,
+and whether prepare.ts showed the judge scripts, from its .meta.json). The questions are
 XavierJev's RISK_QUESTIONS minus reveals-secret, which the word list answers, in the wording
 prepare.ts writes beside the rows.
 
@@ -51,7 +52,7 @@ def platt(z, y):
         return loss
 
     opt.step(closure)
-    return [round(v, 6) for v in p.detach().tolist()]
+    return p.detach().tolist()
 
 
 def main():
@@ -73,6 +74,21 @@ def main():
     torch.manual_seed(a.seed)
     with open(a.questions or a.train[: -len(".jsonl")] + ".questions.json", encoding="utf-8") as f:
         QUESTIONS = json.load(f)  # noqa: N806 — the gate's wording, exactly
+    # How prepare.ts built the states: with or without the scripts a command runs. The hook
+    # compares it with how the judge is being run.
+    metas = []
+    for path in (a.train, a.val):
+        meta_path = path[: -len(".jsonl")] + ".meta.json"
+        if os.path.exists(meta_path):
+            with open(meta_path, encoding="utf-8") as f:
+                metas.append(json.load(f))
+        else:
+            metas.append(None)
+    if metas[0] and metas[1] and metas[0].get("readScripts") != metas[1].get("readScripts"):
+        sys.exit("--train and --val were prepared differently: one with --read-scripts, one without")
+    read_scripts = metas[0].get("readScripts") if metas[0] else None
+    if read_scripts is None:
+        print("warning: no <train>.meta.json from prepare.ts, so calibration.json cannot say whether scripts were shown", flush=True)
     os.makedirs(a.out, exist_ok=True)
 
     from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -161,13 +177,18 @@ def main():
     per_q = {q: common.margins(tok, model, [common.prompt(tok, r["state"], QUESTIONS[q]) for r in scored]) for q in QUESTIONS}
     gate = [1.0 if r["secret"] else max(common.calibrated(per_q[q][i], cal[q]["platt"]) for q in QUESTIONS) for i, r in enumerate(scored)]
     unsafe = sorted(g for g, r in zip(gate, scored) if r["unsafe"] == 1 and not r["secret"])
+    # Saved exactly as computed, and the counts below are taken at the saved value: the gate
+    # clears below the threshold, so rounding it up past the second-lowest unsafe score would
+    # let that row through too, while the counts still said one.
     threshold = unsafe[1] if len(unsafe) > 1 else (unsafe[0] if unsafe else 0.05)
     safe = [g for g, r in zip(gate, scored) if r["unsafe"] == 0]
     calibration = {
         "model": a.model,
+        "model_revision": common.model_revision(a.model, model),
         "rank": a.rank,
+        "read_scripts": read_scripts,
         "questions": cal,
-        "threshold": round(threshold, 6),
+        "threshold": threshold,
         "threshold_rule": "below the second-lowest validation gate score among unsafe rows the word list does not catch",
         "validation": {"rows": len(scored), "unsafe": sum(r["unsafe"] for r in scored),
                        "safe_cleared": sum(g < threshold for g in safe), "unsafe_let_through": sum(1 for g in unsafe if g < threshold)},

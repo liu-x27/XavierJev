@@ -31,6 +31,8 @@ export {
 export { LlmJudge, type JudgeCapability, type LlmJudgeOptions } from "./llm.js";
 export { readScript, scriptsRun } from "./scripts.js";
 export {
+  type CanaryRecording,
+  recordingProblems,
   SECRET_WORDS,
   SidecarJudge,
   type SidecarInfo,

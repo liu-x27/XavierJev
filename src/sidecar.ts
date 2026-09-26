@@ -16,18 +16,78 @@ import type { JudgeBackend, JudgeIdentity, JudgeState, NoulAnswer, NoulQuestion 
 export const SECRET_WORDS =
   /\.env\b|id_rsa|id_ed25519|\.ssh\/|credential|password|passwd|secret|token|api[_-]?key|printenv|\benv\b|\.aws\/|\.npmrc|\.netrc|git-credentials|\b(?:mysql|mariadb|mysqldump|mysqladmin)\b[^|;&\n]*\s-p\S|\bsshpass\b|\bcurl\b[^|;&\n]*\s(?:-u|--user)\s*\S+:\S+|:\/\/[^/\s:@]+:[^/\s@]+@/i;
 
+/**
+ * The gate's canaries as scored by one trained judge (`npm run sidecar:canaries`), and what they
+ * were scored on, so that a later start can tell whether they still describe the judge in front
+ * of it. Files written before 0.7.0 are a bare array; the sidecar serves those as
+ * `{ canaries }` alone, and they no longer verify.
+ */
+export interface CanaryRecording {
+  /** The judge's `/identify` when the canaries were scored. */
+  recordedOn?: { model: string; digest: string };
+  /** The threshold they were scored at. */
+  threshold?: number;
+  /** `SECRET_WORDS.source` of the build that scored them, since that list answers `reveals-secret`. */
+  secretWords?: string;
+  canaries: GateCanary[];
+}
+
 /** What the sidecar says about itself at `GET /identify`. */
 export interface SidecarInfo {
   model: string;
-  /** Changes whenever the weights, the adapter or the calibration do. */
+  /** Changes whenever the base model's revision, the adapter or the calibration do. */
   digest: string;
   detail: string;
   /** The question ids it was trained on and will answer. */
   questions: string[];
   /** The gate threshold its training chose, on its own calibrated scale. */
   threshold: number;
-  /** The gate's canary commands scored when it was recorded (`npm run sidecar:canaries`). */
-  canaries?: GateCanary[];
+  /**
+   * Whether it was trained on states with the scripts a command runs (`prepare.ts
+   * --read-scripts`). Null or absent for runs before 0.7.0, which did not record it.
+   */
+  readScripts?: boolean | null;
+  /** The base model's revision: the hub snapshot, or a hash of a local model's files. */
+  modelRevision?: string;
+  /** The canaries it serves, with what they were recorded on. */
+  recording?: CanaryRecording;
+}
+
+/**
+ * Reasons the canaries a sidecar serves may not describe the judge it is now, beyond the digest
+ * comparison `checkGate` makes against `recording.recordedOn`: recorded without saying on which
+ * judge, at another threshold, with another word list, or for a judge trained with scripts shown
+ * and now run without them, or the other way round. An empty list means nothing here stands in
+ * the way; a host that clears commands should treat anything else as unverified.
+ */
+export function recordingProblems(
+  info: SidecarInfo,
+  live: { readScripts: boolean; secretWords?: RegExp },
+): string[] {
+  const recording = info.recording;
+  if (!recording?.canaries?.length) return ["the sidecar serves no recorded canaries"];
+  if (!recording.recordedOn) {
+    return ["its canaries were recorded without the judge's identity (before 0.7.0): record them again"];
+  }
+  const problems: string[] = [];
+  if (recording.threshold !== info.threshold) {
+    problems.push(`its canaries were recorded at threshold ${recording.threshold}, and it now serves ${info.threshold}`);
+  }
+  if (recording.secretWords !== (live.secretWords ?? SECRET_WORDS).source) {
+    problems.push("its canaries were recorded with a different reveals-secret word list from this build's");
+  }
+  if (typeof info.readScripts !== "boolean") {
+    problems.push(
+      'its calibration.json does not say whether scripts were shown in training (before 0.7.0): add "read_scripts"',
+    );
+  } else if (info.readScripts !== live.readScripts) {
+    problems.push(
+      info.readScripts
+        ? "it was trained with the scripts a command runs in its state, and they are not being shown"
+        : "it was trained without scripts in its state, and they are being shown (--read-scripts)",
+    );
+  }
+  return problems;
 }
 
 export interface SidecarJudgeOptions {
@@ -46,7 +106,9 @@ export interface SidecarJudgeOptions {
  * answers `POST /noul` with a calibrated probability per question for the questions it was
  * trained on; anything else it refuses, and a refusal, like a timeout or a dead sidecar, is a
  * judge failure the gate turns into asking. `reveals-secret` never goes to it: it is answered
- * here from {@link SECRET_WORDS} over the command, 1 on a match and 0 otherwise.
+ * here from {@link SECRET_WORDS} over the command, 1 on a match and 0 otherwise. The list reads
+ * the command only, not the `script` entries `readScripts` adds, so a script that prints a
+ * credential is left to the three trained questions, which were not trained for that harm.
  *
  * Its probabilities are on its own scale, so the gate needs the sidecar's threshold, not 0.2,
  * and its canaries, not the ones recorded for llama3.1:8b — `info()` returns both.
@@ -56,7 +118,6 @@ export class SidecarJudge implements JudgeBackend {
   private readonly url: string;
   private readonly timeoutMs: number;
   private readonly secretWords: RegExp;
-  private cached: Promise<SidecarInfo> | undefined;
 
   constructor(options: SidecarJudgeOptions = {}) {
     this.url = (
@@ -65,21 +126,19 @@ export class SidecarJudge implements JudgeBackend {
       "http://127.0.0.1:8765"
     ).replace(/\/+$/, "");
     this.timeoutMs = options.timeoutMs ?? 2000;
-    this.secretWords = options.secretWords ?? SECRET_WORDS;
+    // A global or sticky RegExp keeps lastIndex between test() calls, so the same command
+    // would alternate between matching and not.
+    const words = options.secretWords ?? SECRET_WORDS;
+    this.secretWords = /[gy]/.test(words.flags) ? new RegExp(words.source, words.flags.replace(/[gy]/g, "")) : words;
   }
 
-  /** The sidecar's description of itself, fetched once. */
-  info(): Promise<SidecarInfo> {
-    this.cached ??= this.request<SidecarInfo>("/identify").then((i) => {
-      if (typeof i.threshold !== "number" || !Array.isArray(i.questions)) {
-        throw new Error("the sidecar's /identify has no threshold or questions");
-      }
-      return i;
-    });
-    this.cached.catch(() => {
-      this.cached = undefined;
-    });
-    return this.cached;
+  /** The sidecar's description of itself, asked afresh each time: it may have been restarted on other weights. */
+  async info(): Promise<SidecarInfo> {
+    const i = await this.request<SidecarInfo>("/identify");
+    if (typeof i.threshold !== "number" || !Array.isArray(i.questions)) {
+      throw new Error("the sidecar's /identify has no threshold or questions");
+    }
+    return i;
   }
 
   async identify(): Promise<JudgeIdentity> {
