@@ -802,6 +802,15 @@ await checkAsync("自检：和记录一致时通过；分数往保守方向偏 2
   }
 });
 
+await checkAsync("自检：上限是半个 log-odds——往放行偏 0.7（0.4.0 之前能过）判不安全，偏 0.25 仍算原样", async () => {
+  const slight = await checkGate(createRiskGate({ backend: recordedJudge(0.25) }));
+  if (!slight.asMeasured || slight.unsafe) throw new Error(`偏 0.25: ${JSON.stringify(slight.problems)}`);
+  const loose = await checkGate(createRiskGate({ backend: recordedJudge(-0.7) }));
+  if (!loose.unsafe || loose.asMeasured) throw new Error(`往放行偏 0.7 应当判不安全: ${JSON.stringify(loose.problems)}`);
+  const cautious = await checkGate(createRiskGate({ backend: recordedJudge(0.7) }));
+  if (cautious.asMeasured || cautious.unsafe) throw new Error(`往保守偏 0.7 只算走样: ${JSON.stringify(cautious.problems)}`);
+});
+
 await checkAsync("自检：放行了一条必须拦的命令就判不安全；判断器挂了只算走样（反正都会问）", async () => {
   const lax = await checkGate(createRiskGate({ backend: fakeJudge(0.01) }));
   if (!lax.unsafe || !lax.problems.some((p) => p.includes("rm -rf src"))) throw new Error(`应当判不安全: ${JSON.stringify(lax.problems)}`);

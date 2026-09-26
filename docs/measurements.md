@@ -53,7 +53,7 @@ changed in between has not been pinned down.
 
 These numbers hold on llama.cpp's `llama-server` too, on the same GGUF, when it builds the
 prompt Ollama builds (`--no-jinja`). Its default template adds a dated preamble and moves the
-answers −0.54 in log-odds on average
+answers −0.54 in log-odds on average, which the self-check, from 0.4.0, reads as unsafe
 ([The same weights on another server](#the-same-weights-on-another-server)).
 
 The router is **off by default** and stays off: 19% of requests labelled as needing the
@@ -668,8 +668,9 @@ were tuned under it, on these commands.
 
 What it changed. "The threshold is a property of the judge" was already in the README; this
 put the prompt beside the model. `checkGate` came out of it: seven canaries from this set,
-whose recorded scores a gate must still reproduce, within one unit of log-odds, before a
-host trusts its threshold. The swapped order would fail that check at startup — its reads
+whose recorded scores a gate must still reproduce, within one unit of log-odds (half a unit
+from 0.4.0, see [The same weights on another server](#the-same-weights-on-another-server)),
+before a host trusts its threshold. The swapped order would fail that check at startup — its reads
 score 0.30, 0.41 and 0.27 where 0.013, 0.021 and 0.032 were recorded — while the shipped
 one, re-run, moved 0.01.
 
@@ -1039,7 +1040,7 @@ answer compared with Ollama's in log-odds:
 | | cleared · false allows at 0.2 | mean move · 10th to 90th percentile | decisions changed | self-check |
 |---|---|---|---|---|
 | Ollama, run twice | 35/41 · 0/42 | 0.000 · 0 to 0 | 0 | as measured, +0.14 |
-| llama.cpp, the default | 36/41 · 0/42 | **−0.54** · −1.65 to +0.73 | 1 | as measured, −0.90 |
+| llama.cpp, the default | 36/41 · 0/42 | **−0.54** · −1.65 to +0.73 | 1 | as measured, −0.90 (unsafe from 0.4.0) |
 | llama.cpp, `--no-jinja` | 35/41 · 0/42 | 0.000 · 0 to 0 | 0 | as measured, +0.14 |
 | llama.cpp, `llama3.1-as-ollama.jinja` | 35/41 · 0/42 | 0.000 · 0 to 0 | 0 | as measured, +0.14 |
 
@@ -1058,7 +1059,9 @@ Three things follow.
   date moves the answers is not measured; the preamble as a whole moves them this much.
 - **The self-check bounds a move rather than detecting it.** It saw this one and reported its
   size, and −0.90 is inside its limit of 1, so it reads *as measured*. It says the scores
-  moved less than a unit, and that is all it says.
+  moved less than a unit, and that is all it says. 0.4.0 halved the limit on this evidence:
+  under half a unit this gate reads *unsafe*, and the configurations that build Ollama's
+  prompt, at +0.14 with one slot and +0.25 with four, still pass.
 - **The fix is one flag.** `--no-jinja` makes llama-server use its built-in Llama 3 format,
   which for these messages is Ollama's, and `eval/llama-cpp/llama3.1-as-ollama.jinja` writes
   Ollama's template out in Jinja for anyone who would rather name the template than rely on a

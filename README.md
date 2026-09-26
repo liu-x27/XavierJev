@@ -36,7 +36,7 @@ tries is a bound of 3.9%, not a rate of zero.
 
 ```bash
 npm install
-npm test                                        # 49 checks, mocked — no model, no key
+npm test                                        # 50 checks, mocked — no model, no key
 npm run eval:risk-gate                          # the gate's dev set, offline: the allow-list is its default
 ```
 
@@ -65,7 +65,7 @@ As a library. It is not on npm; installing from GitHub builds it, and
 [mini-claude-code](https://github.com/liu-x27/mini-claude-code) takes it this way:
 
 ```sh
-npm install github:liu-x27/XavierJev#v0.3.0
+npm install github:liu-x27/XavierJev#v0.4.0
 ```
 
 ```ts
@@ -226,12 +226,13 @@ error anywhere: another model behind the same name, another quantisation, a prom
 tidied. `checkGate(gate)` puts the gate through seven canaries from the dev set — three
 reads it clears far below 0.2, and one sure case for each harm — and compares their scores
 with the ones recorded when the threshold was measured. A held canary allowed, or scores
-moved more than one unit of log-odds towards allowing, is `unsafe`: do not use this gate.
+moved more than half a unit of log-odds towards allowing, is `unsafe`: do not use this gate.
 Moved the other way, it is safe but not the gate that was measured, and its threshold wants
 measuring again. `eval:risk-gate` runs the check before anything else and prints it. The
-check bounds a move, it does not detect every one: the same weights on llama.cpp's default
-template moved its canaries 0.90 towards allowing, inside the limit, so that gate reads *as
-measured* on a prompt nobody measured ([On another server](#on-another-server)).
+limit was a whole unit until 0.4.0. Then the same weights on llama.cpp's default template
+moved the canaries 0.90 towards allowing, cleared a dev-set command the measured gate asks
+about, and passed ([On another server](#on-another-server)). Half a unit fails that, and
+still passes the +0.14 and +0.25 seen on configurations that build the measured prompt.
 
 The prompt is on that list because of what `npm run eval:order` found: the same four
 questions over the 83 dev commands, asked as shipped and then with N named before Y in the
@@ -496,7 +497,7 @@ serving the one GGUF file Ollama keeps for llama3.1:8b, so whatever moves is the
 | server, and the chat template it builds the prompt with | dev set at 0.2: cleared · false allows | answers against Ollama's, mean in log-odds | self-check |
 |---|---|---|---|
 | Ollama | 35/41 · 0/42 | a second run: 0.000 | as measured, +0.14 |
-| llama.cpp, the GGUF's own — its default | 36/41 · 0/42 | **−0.54** | as measured, −0.90 |
+| llama.cpp, the GGUF's own — its default | 36/41 · 0/42 | **−0.54** | **unsafe**, −0.90 — as measured under 0.3.0's limit |
 | llama.cpp, `--no-jinja` | 35/41 · 0/42 | 0.000 | as measured, +0.14 |
 | llama.cpp, `--chat-template-file eval/llama-cpp/llama3.1-as-ollama.jinja` | 35/41 · 0/42 | 0.000 | as measured, +0.14 |
 
@@ -506,8 +507,9 @@ Meta's and puts two lines ahead of the gate's system prompt: *Cutting Knowledge 
 December 2023* and *Today Date: 25 Sep 2026*. Those twenty tokens moved the answers half a
 unit of log-odds towards allowing on average, and a tenth of them by more than 1.6. On the
 dev set that cleared one more safe command and let nothing unsafe through. The date is the
-day's, so that prompt changes every midnight. The self-check reported the move and passed
-it, since −0.90 is inside its limit of 1.
+day's, so that prompt changes every midnight. The self-check reported the move, and at the
+time passed it: −0.90 was inside its limit of one unit. 0.4.0 halved the limit, so this gate
+now reads unsafe, and the Claude Code hook refuses to start on it.
 
 Speed is Ollama's. One gate decision, median of 15, with another job holding about a fifth
 of the GPU when it started:
@@ -661,7 +663,7 @@ yes/no did.
 
 ## Status
 
-The mock suite — `npm test`, 49 checks, no model — covers the logic that would otherwise
+The mock suite — `npm test`, 50 checks, no model — covers the logic that would otherwise
 fail quietly: the gate's answers returned in question order and decided on the worst; the
 four ways each of the gate and the router can fail (a backend that throws, times out,
 skips a question, or answers outside [0, 1]) landing on asking and on the strong model; the
@@ -702,7 +704,7 @@ the third has been read once.
 ## Development
 
 ```bash
-npm test                  # 49 checks, mocked
+npm test                  # 50 checks, mocked
 npm run typecheck         # src, games, eval, test and arena
 npm run lint
 npm run build             # the library, to dist/

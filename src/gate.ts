@@ -375,11 +375,18 @@ export interface GateCheck {
  * the one that was measured.
  *
  * The same judge answering the same command varies in the third decimal,
- * a tenth or two of a unit. Naming N before Y in the answer instruction, and
- * changing nothing else, moved every question by 1.6 to 2.9 on the dev set.
- * One unit sits between the two.
+ * a tenth or two of a unit: rewording `outside-cwd` in 0.3.0 left the
+ * canaries at +0.14, and batching four requests on llama.cpp's server at
+ * +0.25. Naming N before Y in the answer instruction, and changing nothing
+ * else, moved every question by 1.6 to 2.9 on the dev set.
+ *
+ * The limit was one unit until 0.4.0, which that gap allowed. Then the same
+ * weights on llama.cpp's default chat template, which adds a dated preamble
+ * to the prompt, moved the canaries 0.90 towards allowing and cleared one
+ * more dev-set command than the gate that was measured — and passed. Half a
+ * unit fails that and still passes both of the above.
  */
-const MAX_SHIFT = 1;
+const MAX_SHIFT = 0.5;
 
 const logOdds = (p: number) => {
   const q = Math.min(1 - 1e-4, Math.max(1e-4, p));
