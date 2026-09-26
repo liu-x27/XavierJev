@@ -29,6 +29,7 @@ import path from "node:path";
 import chalk from "chalk";
 import { LlmJudge } from "../../src/llm.js";
 import { logger } from "../../src/log.js";
+import { bindRun } from "../resume.js";
 
 logger.setLevel("error");
 
@@ -72,6 +73,8 @@ if (!capability.logprobs || !capability.firstTokenUsable) {
   console.error(`the judge cannot be used: ${capability.detail}`);
   process.exit(2);
 }
+// --out resumes, so it is bound to this judge: a stopped run is finished by the same one or not at all.
+await bindRun(OUT, "option-order", judge);
 
 const rotate = <T>(xs: T[], k: number) => [...xs.slice(k), ...xs.slice(0, k)];
 

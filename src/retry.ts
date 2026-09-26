@@ -1,4 +1,5 @@
 import type { RetryJudge, RetryVerdict, ToolFailure } from "./decisions.js";
+import { withDeadline } from "./deadline.js";
 import { logger } from "./log.js";
 import { positiveOption, probabilityOption } from "./options.js";
 import { type JudgeBackend, type NoulQuestion, usableProbability } from "./types.js";
@@ -93,14 +94,10 @@ export function createRetryJudge(options: RetryJudgeOptions): RetryJudge {
     // The error alone: with the tool and the call beside it, the judge did
     // slightly worse (25/36 against 26/36 on the older wording).
     const state = { error: failure.error.slice(0, maxErrorChars) };
-    let timer: NodeJS.Timeout | undefined;
     try {
-      const answers = await Promise.race([
-        backend.noul(state, [RETRY_QUESTION]),
-        new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error(`no answer in ${timeoutMs} ms`)), timeoutMs);
-        }),
-      ]);
+      const answers = await withDeadline(timeoutMs, `no answer in ${timeoutMs} ms`, (signal) =>
+        backend.noul(state, [RETRY_QUESTION], { signal }),
+      );
       const p = usableProbability(answers.find((a) => a.id === RETRY_QUESTION.id));
       const latencyMs = Date.now() - started;
       if (p === undefined) {
@@ -113,8 +110,6 @@ export function createRetryJudge(options: RetryJudgeOptions): RetryJudge {
       const message = err instanceof Error ? err.message : String(err);
       logger.warn(`Retry judge ${backend.name} failed: ${message}`);
       return { retry: false, probability: undefined, reason: `judge failed: ${message}`, latencyMs: Date.now() - started };
-    } finally {
-      clearTimeout(timer);
     }
   };
 }

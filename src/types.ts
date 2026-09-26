@@ -86,7 +86,7 @@ export interface JudgeBackend {
    * missing or out-of-range answer as a backend failure rather than as a
    * "no" — see `createRiskGate`, which fails closed.
    */
-  noul(state: JudgeState, questions: NoulQuestion[]): Promise<NoulAnswer[]>;
+  noul(state: JudgeState, questions: NoulQuestion[], options?: NoulOptions): Promise<NoulAnswer[]>;
 
   /**
    * Which model is answering, as exactly as the endpoint can say. Optional:
@@ -94,6 +94,14 @@ export interface JudgeBackend {
    * on, when there is one to compare.
    */
   identify?(): Promise<JudgeIdentity>;
+}
+
+export interface NoulOptions {
+  /**
+   * Aborted when the caller stops waiting — a decision's timeout. A backend that makes
+   * requests should pass it on, so an answer nobody will read stops taking up the model.
+   */
+  signal?: AbortSignal;
 }
 
 /** What a backend can say about exactly which model answers its questions. */

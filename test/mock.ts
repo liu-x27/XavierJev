@@ -52,6 +52,7 @@ import { createRetryJudge, patternRetryJudge } from "../src/retry.js";
 import { createModelRouter } from "../src/router.js";
 import { scriptsRun } from "../src/scripts.js";
 import { recordingProblems, SECRET_WORDS, SidecarJudge, type SidecarInfo } from "../src/sidecar.js";
+import { runMismatch } from "../eval/resume.js";
 import { casesNeeded, upperBound } from "../eval/stats.js";
 import { decide } from "../integrations/claude-code/decide.js";
 import { anyStopJudge, createRepeatStopJudge, createStopJudge } from "../src/stop.js";
@@ -1425,6 +1426,84 @@ check("recordingProblems：金丝雀录制时的身份、阈值、词表、是�
     const got = recordingProblems(i, live);
     if (!got.some((p) => pattern.test(p))) throw new Error(`${name}: ${JSON.stringify(got)}`);
   }
+});
+
+// ─────────────────────────────────────────────
+// 13. Deadlines
+// ─────────────────────────────────────────────
+section("13. Deadlines");
+
+/** A backend that never answers on its own, and counts the calls whose signal was aborted. */
+function hangingJudge() {
+  const seen = { calls: 0, aborted: 0 };
+  const backend: JudgeBackend = {
+    name: "hanging",
+    noul: (_state, _questions, options) =>
+      new Promise((_resolve, reject) => {
+        seen.calls++;
+        options?.signal?.addEventListener("abort", () => {
+          seen.aborted++;
+          reject(options.signal?.reason);
+        });
+      }),
+  };
+  return { backend, seen };
+}
+
+await checkAsync("四个决策超时后都中止判断器的请求，而不只是不再等它", async () => {
+  const gate = hangingJudge();
+  const router = hangingJudge();
+  const retry = hangingJudge();
+  const stop = hangingJudge();
+  const g = await createRiskGate({ backend: gate.backend, timeoutMs: 30 })(rm);
+  const r = await createModelRouter({ backend: router.backend, strong: "claude-opus-5", cheap: "claude-haiku-4-5", timeoutMs: 30 })("x");
+  const t = await createRetryJudge({ backend: retry.backend, timeoutMs: 30 })(outage);
+  const s = await createStopJudge({ backend: stop.backend, timeoutMs: 30 })({
+    prompt: "go",
+    turn: 4,
+    recent: [boom, boom, boom, { ...boom, outcome: "other" }],
+  });
+  if (g.action !== "ask" || r.model !== "claude-opus-5" || t.retry || s.stop) throw new Error("超时后的决定不对");
+  for (const [name, judge] of [["gate", gate], ["router", router], ["retry", retry], ["stop", stop]] as const) {
+    if (judge.seen.calls === 0 || judge.seen.aborted !== judge.seen.calls)
+      throw new Error(`${name}: ${judge.seen.calls} 次调用，中止了 ${judge.seen.aborted} 次`);
+  }
+});
+
+await checkAsync("SidecarJudge：闸门超时后请求真的断开，sidecar 不用再算一个没人要的答案", async () => {
+  let dropped = false;
+  const server = http.createServer((req) => {
+    req.socket.on("close", () => {
+      dropped = true;
+    }); // and never answers
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const { port } = server.address() as { port: number };
+  try {
+    const judge = new SidecarJudge({ url: `http://127.0.0.1:${port}`, timeoutMs: 10_000 });
+    const v = await createRiskGate({ backend: judge, autoAllowBelow: 0.03, timeoutMs: 50 })(ls);
+    for (let i = 0; i < 40 && !dropped; i++) await new Promise((r) => setTimeout(r, 25));
+    if (v.action !== "ask" || !dropped) throw new Error(`${v.action}, 连接断开: ${dropped}`);
+  } finally {
+    await new Promise<void>((r) => {
+      server.close(() => r());
+      server.closeAllConnections();
+    });
+  }
+});
+
+check("续跑的结果文件绑定写它的判断器：换了模型或摘要就拒绝续跑，旧文件没有记录也拒绝", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "xavierjev-resume-"));
+  const file = path.join(dir, "answers.jsonl");
+  const run = { eval: "jevbench", backend: "llm:llama3.1:8b", model: "llama3.1:8b", digest: "46e0", xavierjev: "0.7.0" };
+  if (runMismatch(file, run) !== undefined) throw new Error("新文件应当直接开始");
+  writeFileSync(file, '{"task_id":"t1","ok":true}\n');
+  if (runMismatch(file, run) !== undefined) throw new Error("同一个判断器应当能续跑");
+  const other = runMismatch(file, { ...run, digest: "9f1a" });
+  if (!other?.includes("digest")) throw new Error(`换了摘要应当拒绝: ${other}`);
+  const orphan = path.join(dir, "old.jsonl");
+  writeFileSync(orphan, '{"task_id":"t1","ok":true}\n');
+  if (!runMismatch(orphan, run)?.includes("no ")) throw new Error("没有记录的旧文件应当拒绝");
 });
 
 // ─────────────────────────────────────────────

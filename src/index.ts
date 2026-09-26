@@ -66,6 +66,7 @@ export {
   type RubricResult,
   type JudgeState,
   type NoulAnswer,
+  type NoulOptions,
   type NoulQuestion,
   MIN_COVERAGE,
   UNKNOWN_PROBABILITY,

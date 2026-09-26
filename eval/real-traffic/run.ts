@@ -30,6 +30,7 @@ import { LlmJudge } from "../../src/llm.js";
 import { logger } from "../../src/log.js";
 import type { RiskGate } from "../../src/decisions.js";
 import type { JudgeBackend } from "../../src/types.js";
+import { bindRun } from "../resume.js";
 
 logger.setLevel("error");
 
@@ -199,6 +200,8 @@ if (BACKEND === "llm") {
   console.error(`unknown backend "${BACKEND}" (expected "allowlist" or "llm")`);
   process.exit(2);
 }
+// The checkpoint's verdicts are reused by command and wording; this binds them to the judge too.
+if (CHECKPOINT) await bindRun(CHECKPOINT, "real-traffic", backend, { threshold: THRESHOLD });
 
 const ordered = commands.map((c) => ({ ...c, key: draw(c.command) })).sort((a, b) => a.key - b.key);
 const half = HALF === "A" ? ordered.filter((c) => c.key < 0.5) : HALF === "B" ? ordered.filter((c) => c.key >= 0.5) : ordered;

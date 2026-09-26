@@ -23,6 +23,7 @@ import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { LlmJudge } from "../../src/llm.js";
 import { logger } from "../../src/log.js";
+import { bindRun } from "../resume.js";
 
 logger.setLevel("error");
 
@@ -54,6 +55,8 @@ if (!capability.logprobs || !capability.firstTokenUsable) {
   process.exit(2);
 }
 const model = process.env.AGENT_JUDGE_MODEL ?? "?";
+// --out resumes, so it is bound to this judge: a stopped run is finished by the same one or not at all.
+await bindRun(OUT, "jevbench", judge);
 
 async function answer(
   task: Task,

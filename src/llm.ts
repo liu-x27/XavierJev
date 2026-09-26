@@ -8,6 +8,7 @@ import type {
   JudgeIdentity,
   JudgeState,
   NoulAnswer,
+  NoulOptions,
   NoulQuestion,
   OrderOptions,
   RubricBackend,
@@ -152,14 +153,14 @@ export class LlmJudge implements JudgeBackend, ChoiceBackend, RubricBackend {
     this.client = new OpenAI({ apiKey, ...(baseURL ? { baseURL } : {}) });
   }
 
-  async noul(state: JudgeState, questions: NoulQuestion[]): Promise<NoulAnswer[]> {
+  async noul(state: JudgeState, questions: NoulQuestion[], options: NoulOptions = {}): Promise<NoulAnswer[]> {
     const rendered = renderState(state);
     // One call per question: each answer is a single token, so they cannot
     // share a completion, and they have no reason to wait for each other.
     return Promise.all(
       questions.map(async (question) => ({
         id: question.id,
-        ...(await this.askOne(rendered, question.ask)),
+        ...(await this.askOne(rendered, question.ask, options.signal)),
       })),
     );
   }
@@ -372,10 +373,11 @@ export class LlmJudge implements JudgeBackend, ChoiceBackend, RubricBackend {
   private async askOne(
     state: string,
     ask: string,
+    signal?: AbortSignal,
   ): Promise<{ probability: number; coverage?: number }> {
     const messages = yesNoMessages(state, ask, this.yesNoOrder);
 
-    const completion = await this.complete(messages);
+    const completion = await this.complete(messages, this.topLogprobs, signal);
     const choice = completion.choices[0];
     if (!choice) {
       throw new Error("judge returned no choices");
@@ -501,26 +503,33 @@ export class LlmJudge implements JudgeBackend, ChoiceBackend, RubricBackend {
   private async complete(
     messages: OpenAI.Chat.ChatCompletionMessageParam[],
     topLogprobs = this.topLogprobs,
+    signal?: AbortSignal,
   ): Promise<OpenAI.Chat.ChatCompletion> {
     const base = { model: this.model, messages, max_tokens: 1, temperature: 0 } as const;
+    // Aborted when the decision waiting on this stops waiting, so the request is dropped
+    // rather than left holding the model (withDeadline).
+    const request = signal ? { signal } : {};
 
     if (this.logprobsUnsupported) {
-      return this.client.chat.completions.create(base);
+      return this.client.chat.completions.create(base, request);
     }
 
     try {
-      return await this.client.chat.completions.create({
-        ...base,
-        logprobs: true,
-        top_logprobs: topLogprobs,
-      });
+      return await this.client.chat.completions.create(
+        {
+          ...base,
+          logprobs: true,
+          top_logprobs: topLogprobs,
+        },
+        request,
+      );
     } catch (err) {
       // Some compatible endpoints reject the parameter outright rather than
       // ignoring it. Retry once without it, and stop asking.
       if (!isBadRequest(err)) throw err;
       this.noteDegraded();
       this.logprobsUnsupported = true;
-      return this.client.chat.completions.create(base);
+      return this.client.chat.completions.create(base, request);
     }
   }
 

@@ -1,6 +1,6 @@
 import type { GateCanary } from "./gate.js";
 import { renderState } from "./llm.js";
-import type { JudgeBackend, JudgeIdentity, JudgeState, NoulAnswer, NoulQuestion } from "./types.js";
+import type { JudgeBackend, JudgeIdentity, JudgeState, NoulAnswer, NoulOptions, NoulQuestion } from "./types.js";
 
 /**
  * Words that make `reveals-secret` a yes without asking any model: a command that names a key
@@ -146,7 +146,7 @@ export class SidecarJudge implements JudgeBackend {
     return { model: i.model, digest: i.digest, detail: i.detail };
   }
 
-  async noul(state: JudgeState, questions: NoulQuestion[]): Promise<NoulAnswer[]> {
+  async noul(state: JudgeState, questions: NoulQuestion[], options: NoulOptions = {}): Promise<NoulAnswer[]> {
     const text = typeof state.command === "string" ? state.command : renderState(state);
     const local = new Map<string, number>();
     const remote: NoulQuestion[] = [];
@@ -162,6 +162,7 @@ export class SidecarJudge implements JudgeBackend {
           state,
           questions: remote.map((q) => ({ id: q.id, ask: q.ask })),
         },
+        options.signal,
       );
       for (const a of body.answers ?? []) got.set(a.id, a.probability);
     }
@@ -173,8 +174,9 @@ export class SidecarJudge implements JudgeBackend {
     });
   }
 
-  private async request<T>(route: string, body?: unknown): Promise<T> {
-    const signal = AbortSignal.timeout(this.timeoutMs);
+  private async request<T>(route: string, body?: unknown, caller?: AbortSignal): Promise<T> {
+    const own = AbortSignal.timeout(this.timeoutMs);
+    const signal = caller ? AbortSignal.any([own, caller]) : own;
     const init: RequestInit =
       body === undefined
         ? { method: "GET", signal }

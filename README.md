@@ -36,7 +36,7 @@ tries is a bound of 3.9%, not a rate of zero.
 
 ```bash
 npm install
-npm test                                        # 63 checks, mocked — no model, no key
+npm test                                        # 66 checks, mocked — no model, no key
 npm run eval:risk-gate                          # the gate's dev set, offline: the allow-list is its default
 ```
 
@@ -65,7 +65,7 @@ As a library. It is not on npm; installing from GitHub builds it, and
 [mini-claude-code](https://github.com/liu-x27/mini-claude-code) takes it this way:
 
 ```sh
-npm install github:liu-x27/XavierJev#v0.7.0
+npm install github:liu-x27/XavierJev#v0.7.1
 ```
 
 ```ts
@@ -186,7 +186,9 @@ sees looks, to the agent, like a tool that is broken.
 **Every backend failure lands on asking.** A backend that throws, times out, skips a
 question, or answers with something that is not a probability in [0, 1] gets the user
 asked. That closes the failure where the judge is silently absent while the gate goes on
-reporting that everything is fine. It cannot close a well-formed answer that is wrong: a
+reporting that everything is fine. A timeout also cancels the request (`NoulOptions.signal`,
+since 0.7.0), so an answer nobody is waiting for does not hold a local model that serves one
+request at a time while the next command's question queues behind it. It cannot close a well-formed answer that is wrong: a
 score below the threshold on something destructive auto-allows it, and no prompt appears
 to correct it — which is why false allows are counted apart, why one of them fails an
 eval run, and why no mock can stand in for that column.
@@ -730,7 +732,7 @@ yes/no did.
 
 ## Status
 
-The mock suite — `npm test`, 63 checks, no model — covers the logic that would otherwise
+The mock suite — `npm test`, 66 checks, no model — covers the logic that would otherwise
 fail quietly: the gate's answers returned in question order and decided on the worst; the
 four ways each of the gate and the router can fail (a backend that throws, times out,
 skips a question, or answers outside [0, 1]) landing on asking and on the strong model; the
@@ -748,8 +750,17 @@ drift, its model digest against the recorded one, and a judge that answers no ca
 not say what it is, counted unverified; the answer order reaching the prompt; the Claude Code hook's allow, silence and
 abstentions; the scripts a command runs, found and read into the state only when asked; the
 sidecar judge's word list, and its refusals and absence landing on asking; its identity asked
-afresh, and its canary recording compared field by field with how it is run; and the bounds
-`eval/stats.ts` puts beside a count.
+afresh, and its canary recording compared field by field with how it is run; a timeout in each
+of the four decisions cancelling the judge's request, not only the wait for it, down to the
+sidecar seeing its connection dropped; a resumable eval file refusing a second judge; and the bounds
+`eval/stats.ts` puts beside a count. The sidecar's Python has its own checks,
+`python -m unittest discover -s sidecar`, which CI runs on a CPU build of torch: the threshold
+counted at the value saved, an adapter file missing a tensor refused, the digest moving with
+the base model's revision, and the server's refusals.
+
+Evals that append to a file and resume from it (`eval:jevbench`, `eval:option-order`,
+`eval:real-traffic --checkpoint`) write `<file>.run.json` beside it, naming the backend, the
+model and digest, and the package version, and refuse to resume under a different one.
 
 The tables for the four decisions, the games, throughput and calibration were measured in
 mini-claude-code, with this code and these sets, before the decision layer moved here.
@@ -778,13 +789,14 @@ was.
 ## Development
 
 ```bash
-npm test                  # 63 checks, mocked
+npm test                  # 66 checks, mocked
 npm run typecheck         # src, games, eval, test and arena
 npm run lint
 npm run build             # the library, to dist/
 npm run eval:risk-gate                    # offline: the allow-list is its default backend
 npm run eval:risk-gate -- --backend llm   # the other evals ask the judge by default:
-                                          # routing retry stop snake flappy throughput calibration order latency laddernpm run figures                           # redraws docs/at-a-glance.svg and docs/ladder.svg from docs/data/
+                                          # routing retry stop snake flappy throughput calibration order latency ladder
+npm run figures                           # redraws docs/at-a-glance.svg and docs/ladder.svg from docs/data/
 npm run eval:risk-gate -- --cases test3   # a held-out set; read its docstring first
 ```
 

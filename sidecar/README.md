@@ -58,9 +58,16 @@ rows offline, for measuring before you trust it.
 ```bash
 python sidecar/serve.py --run sidecar/run                     # :8765, this machine only
 npm run sidecar:canaries -- --out sidecar/run/canaries.json   # once, with the server up
-python sidecar/serve.py --run sidecar/run --canaries sidecar/run/canaries.json
+python sidecar/serve.py --run sidecar/run --canaries sidecar/run/canaries.json [--max-pending 4]
 npm run claude-code -- --backend sidecar [--read-scripts]
 ```
+
+The model answers one request at a time. `--max-pending` bounds how many may be answered or
+waiting at once; past that the server answers 503, which the gate treats like any judge
+failure and asks the user. A request the gate stopped waiting for is cancelled, so the
+server sees its connection drop instead of computing an answer nobody reads.
+
+`python -m unittest discover -s sidecar` runs the checks that need no GPU and no model.
 
 The server answers only the questions it was trained on, and only in their trained wording; any
 other question is refused and the gate asks the user. It reports its threshold, whether it was

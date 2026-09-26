@@ -1,4 +1,5 @@
 import type { ModelId, ModelRouter, RouteVerdict } from "./decisions.js";
+import { withDeadline } from "./deadline.js";
 import { logger } from "./log.js";
 import { positiveOption, probabilityOption } from "./options.js";
 import { type JudgeBackend, MIN_COVERAGE, type NoulAnswer, type NoulQuestion } from "./types.js";
@@ -100,9 +101,8 @@ export function createModelRouter(options: ModelRouterOptions): ModelRouter {
 
     let probability: number;
     try {
-      probability = await withTimeout(
-        backend.noul(state, [ROUTING_QUESTION]).then(readRoutingProbability),
-        timeoutMs,
+      probability = await withDeadline(timeoutMs, `timed out after ${timeoutMs}ms`, (signal) =>
+        backend.noul(state, [ROUTING_QUESTION], { signal }).then(readRoutingProbability),
       );
     } catch (err) {
       const reason = `${backend.name} router unavailable: ${err instanceof Error ? err.message : String(err)}`;
@@ -141,14 +141,4 @@ function readRoutingProbability(answers: readonly NoulAnswer[]): number {
     throw new Error(`only ${answer.coverage.toFixed(2)} of the answer was a yes or a no`);
   }
   return probability;
-}
-
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  let timer: NodeJS.Timeout | undefined;
-  const timeout = new Promise<never>((_resolve, reject) => {
-    timer = setTimeout(() => reject(new Error(`timed out after ${ms}ms`)), ms);
-  });
-  return Promise.race([promise, timeout]).finally(() => {
-    if (timer) clearTimeout(timer);
-  });
 }

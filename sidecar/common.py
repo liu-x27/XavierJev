@@ -79,21 +79,25 @@ def load(model_name, adapter=None, rank=None, device="cuda"):
     tok.padding_side = "left"
     model = AutoModelForCausalLM.from_pretrained(model_name, dtype=torch.bfloat16).to(device)
     if adapter:
-        state = torch.load(adapter, map_location=device)
-        r = rank or next(v.shape[0] for k, v in state.items() if k.endswith(".A"))
-        add_lora(model, r, 2 * r)
-        bad = model.load_state_dict(state, strict=False).unexpected_keys
-        if bad:
-            raise ValueError(f"adapter keys the model does not have: {bad[:3]}")
-        # strict=False also forgives the opposite, an adapter file missing some of the model's
-        # adapters, which would leave those at their initial values and serve a different judge.
-        wanted = [k for k in model.state_dict() if k.endswith(".A") or k.endswith(".B")]
-        missing = [k for k in wanted if k not in state]
-        if missing:
-            raise ValueError(f"the adapter file lacks {len(missing)} of the model's {len(wanted)} adapter tensors: {missing[:3]}")
+        attach_adapter(model, torch.load(adapter, map_location=device), rank)
         merge_lora(model)
     model.eval()
     return tok, model
+
+
+def attach_adapter(model, state, rank=None):
+    """Put trained adapters on `model`: every one it has, and nothing else."""
+    r = rank or next(v.shape[0] for k, v in state.items() if k.endswith(".A"))
+    add_lora(model, r, 2 * r)
+    bad = model.load_state_dict(state, strict=False).unexpected_keys
+    if bad:
+        raise ValueError(f"adapter keys the model does not have: {bad[:3]}")
+    # strict=False also forgives the opposite, an adapter file missing some of the model's
+    # adapters, which would leave those at their initial values and serve a different judge.
+    wanted = [k for k in model.state_dict() if k.endswith(".A") or k.endswith(".B")]
+    missing = [k for k in wanted if k not in state]
+    if missing:
+        raise ValueError(f"the adapter file lacks {len(missing)} of the model's {len(wanted)} adapter tensors: {missing[:3]}")
 
 
 def yn_ids(tok):

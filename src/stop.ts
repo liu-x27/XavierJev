@@ -1,4 +1,5 @@
 import type { StopJudge, StopVerdict, TracedCall } from "./decisions.js";
+import { withDeadline } from "./deadline.js";
 import { logger } from "./log.js";
 import { positiveOption, probabilityOption } from "./options.js";
 import { type JudgeBackend, type NoulQuestion, usableProbability } from "./types.js";
@@ -109,14 +110,10 @@ export function createStopJudge(options: StopJudgeOptions): StopJudge {
         .join("\n"),
       "last call": trace.recent.at(-1)!.ok ? "succeeded" : "failed",
     };
-    let timer: NodeJS.Timeout | undefined;
     try {
-      const answers = await Promise.race([
-        backend.noul(state, [STOP_QUESTION]),
-        new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error(`no answer in ${timeoutMs} ms`)), timeoutMs);
-        }),
-      ]);
+      const answers = await withDeadline(timeoutMs, `no answer in ${timeoutMs} ms`, (signal) =>
+        backend.noul(state, [STOP_QUESTION], { signal }),
+      );
       const p = usableProbability(answers.find((a) => a.id === STOP_QUESTION.id));
       const latencyMs = Date.now() - started;
       if (p === undefined) {
@@ -129,8 +126,6 @@ export function createStopJudge(options: StopJudgeOptions): StopJudge {
       const message = err instanceof Error ? err.message : String(err);
       logger.warn(`Stop judge ${backend.name} failed: ${message}`);
       return { stop: false, probability: undefined, reason: `judge failed: ${message}`, latencyMs: Date.now() - started };
-    } finally {
-      clearTimeout(timer);
     }
   };
 }

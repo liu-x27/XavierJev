@@ -21,3 +21,14 @@ jobs:
       - run: npm run build
       # The gate's dev set on the offline allow-list: no model needed, and any false allow fails the run.
       - run: npm run eval:risk-gate
+
+  sidecar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # The sidecar's checks need torch on the CPU and nothing else: no model is downloaded.
+      - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - run: python -m unittest discover -s sidecar -p "test_*.py" -v

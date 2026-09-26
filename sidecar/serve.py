@@ -1,6 +1,6 @@
 """Serve a judge trained by sidecar/train.py to XavierJev's SidecarJudge, on this machine only.
 
-    python sidecar/serve.py --run sidecar/run [--port 8765] [--canaries sidecar/run/canaries.json]
+    python sidecar/serve.py --run sidecar/run [--port 8765] [--canaries sidecar/run/canaries.json] [--max-pending 4]
 
 GET  /identify  -> {model, digest, detail, questions, threshold, readScripts, modelRevision, recording}
 POST /noul      {state, questions: [{id, ask}]} -> {answers: [{id, probability}]}
@@ -26,29 +26,50 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import common  # noqa: E402
 
 
+def refusal(trained, questions):
+    """Why these questions cannot be answered by a judge trained on `trained` (calibration.json's
+    questions), or None: an id it was not trained on, or its wording changed."""
+    for q in questions:
+        known = trained.get(q.get("id"))
+        if known is None:
+            return f"not trained on {q.get('id')}"
+        if q.get("ask") != known["ask"]:
+            return f"{q['id']} is worded differently from the question it was trained on"
+    return None
+
+
+def read_recording(path):
+    """The canaries file as `npm run sidecar:canaries` wrote it. One written before 0.7.0 is a bare
+    array of canaries, served as {canaries} with nothing to say what they were recorded on."""
+    with open(path, encoding="utf-8") as f:
+        recording = json.load(f)
+    return {"canaries": recording} if isinstance(recording, list) else recording
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--run", required=True, help="the --out directory of train.py")
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--canaries", help="written by `npm run sidecar:canaries`")
     ap.add_argument("--device", default="cuda")
+    ap.add_argument("--max-pending", type=int, default=4,
+                    help="requests answered or waiting at once; past that, 503 and the gate asks the user")
     a = ap.parse_args()
     adapter = os.path.join(a.run, "adapter.pt")
     cal_path = os.path.join(a.run, "calibration.json")
     with open(cal_path, encoding="utf-8") as f:
         cal = json.load(f)
-    recording = None
-    if a.canaries:
-        with open(a.canaries, encoding="utf-8") as f:
-            recording = json.load(f)
-        if isinstance(recording, list):  # written before 0.7.0: canaries without what they were recorded on
-            recording = {"canaries": recording}
+    recording = read_recording(a.canaries) if a.canaries else None
     tok, model = common.load(cal["model"], adapter, cal.get("rank"), a.device)
     revision = common.model_revision(cal["model"], model)
     trained_on = cal.get("model_revision")
     if trained_on and trained_on != revision:
         sys.exit(f"{cal['model']} is now revision {revision}, and these adapters were trained on {trained_on}")
     lock = threading.Lock()
+    # The model answers one request at a time. A caller that stopped waiting drops its
+    # connection, but a request already queued here would still be computed, so the queue is
+    # bounded: past it the answer is 503, which the gate treats as a failure and asks the user.
+    pending = threading.BoundedSemaphore(a.max_pending)
     info = {
         "model": f"{cal['model']}+lora",
         "digest": common.digest(cal["model"], revision, adapter, cal_path),
@@ -93,17 +114,19 @@ def main():
             except (ValueError, KeyError):
                 self.reply(400, {"error": "expected {state, questions}"})
                 return
-            for q in questions:
-                known = cal["questions"].get(q.get("id"))
-                if known is None:
-                    self.reply(400, {"error": f"not trained on {q.get('id')}"})
-                    return
-                if q.get("ask") != known["ask"]:
-                    self.reply(400, {"error": f"{q['id']} is worded differently from the question it was trained on"})
-                    return
+            refused = refusal(cal["questions"], questions)
+            if refused:
+                self.reply(400, {"error": refused})
+                return
             texts = [common.prompt(tok, state, q["ask"]) for q in questions]
-            with lock:
-                ms = common.margins(tok, model, texts)
+            if not pending.acquire(blocking=False):
+                self.reply(503, {"error": f"busy: {a.max_pending} requests already answered or waiting"})
+                return
+            try:
+                with lock:
+                    ms = common.margins(tok, model, texts)
+            finally:
+                pending.release()
             self.reply(200, {"answers": [
                 {"id": q["id"], "probability": common.calibrated(m, cal["questions"][q["id"]]["platt"])}
                 for q, m in zip(questions, ms)

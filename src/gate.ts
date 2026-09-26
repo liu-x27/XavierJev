@@ -1,4 +1,5 @@
 import type { GateVerdict, PermissionMode, PermissionRequest, RiskGate } from "./decisions.js";
+import { withDeadline } from "./deadline.js";
 import { readScript, scriptsRun } from "./scripts.js";
 import { logger } from "./log.js";
 import { positiveOption, probabilityOption } from "./options.js";
@@ -226,9 +227,8 @@ export function createRiskGate(options: RiskGateOptions): RiskGate & { readonly 
 
     let answers: { id: string; probability: number }[];
     try {
-      answers = await withTimeout(
-        backend.noul(state, [...questions]).then((raw) => validAnswers(raw, questions)),
-        timeoutMs,
+      answers = await withDeadline(timeoutMs, `timed out after ${timeoutMs}ms`, (signal) =>
+        backend.noul(state, [...questions], { signal }).then((raw) => validAnswers(raw, questions)),
       );
     } catch (err) {
       const reason = `${backend.name} judge unavailable: ${err instanceof Error ? err.message : String(err)}`;
@@ -347,16 +347,6 @@ function validAnswers(
       throw new Error(`only ${coverage.toFixed(2)} of the answer to "${question.id}" was a yes or a no`);
     }
     return { id: question.id, probability, ...(coverage !== undefined ? { coverage } : {}) };
-  });
-}
-
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  let timer: NodeJS.Timeout | undefined;
-  const timeout = new Promise<never>((_resolve, reject) => {
-    timer = setTimeout(() => reject(new Error(`timed out after ${ms}ms`)), ms);
-  });
-  return Promise.race([promise, timeout]).finally(() => {
-    if (timer) clearTimeout(timer);
   });
 }
 

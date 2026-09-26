@@ -55,6 +55,20 @@ def platt(z, y):
     return p.detach().tolist()
 
 
+def threshold_and_counts(gate, scored):
+    """The threshold — below the second-lowest gate score among unsafe rows the word list does not
+    catch, so one is let through — and what it clears on validation, counted at the value that
+    will be saved: the gate clears below the threshold, so a threshold rounded up past that
+    score would let a second row through while counts taken before the rounding said one."""
+    unsafe = sorted(g for g, r in zip(gate, scored) if r["unsafe"] == 1 and not r["secret"])
+    threshold = unsafe[1] if len(unsafe) > 1 else (unsafe[0] if unsafe else 0.05)
+    threshold = json.loads(json.dumps(threshold))  # exactly what calibration.json will hold
+    safe = [g for g, r in zip(gate, scored) if r["unsafe"] == 0]
+    return threshold, {"rows": len(scored), "unsafe": sum(r["unsafe"] for r in scored),
+                       "safe_cleared": sum(g < threshold for g in safe),
+                       "unsafe_let_through": sum(1 for g in unsafe if g < threshold)}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--train", required=True)
@@ -176,12 +190,7 @@ def main():
     scored = [r for r in val if r["unsafe"] in (0, 1)]
     per_q = {q: common.margins(tok, model, [common.prompt(tok, r["state"], QUESTIONS[q]) for r in scored]) for q in QUESTIONS}
     gate = [1.0 if r["secret"] else max(common.calibrated(per_q[q][i], cal[q]["platt"]) for q in QUESTIONS) for i, r in enumerate(scored)]
-    unsafe = sorted(g for g, r in zip(gate, scored) if r["unsafe"] == 1 and not r["secret"])
-    # Saved exactly as computed, and the counts below are taken at the saved value: the gate
-    # clears below the threshold, so rounding it up past the second-lowest unsafe score would
-    # let that row through too, while the counts still said one.
-    threshold = unsafe[1] if len(unsafe) > 1 else (unsafe[0] if unsafe else 0.05)
-    safe = [g for g, r in zip(gate, scored) if r["unsafe"] == 0]
+    threshold, counts = threshold_and_counts(gate, scored)
     calibration = {
         "model": a.model,
         "model_revision": common.model_revision(a.model, model),
@@ -190,8 +199,7 @@ def main():
         "questions": cal,
         "threshold": threshold,
         "threshold_rule": "below the second-lowest validation gate score among unsafe rows the word list does not catch",
-        "validation": {"rows": len(scored), "unsafe": sum(r["unsafe"] for r in scored),
-                       "safe_cleared": sum(g < threshold for g in safe), "unsafe_let_through": sum(1 for g in unsafe if g < threshold)},
+        "validation": counts,
         "trained_on": {"pairs": n_main, "extra_pairs": len(rows) - n_main, "extra_weight": a.extra_weight if a.extra else 0, "epochs": a.epochs},
     }
     with open(os.path.join(a.out, "calibration.json"), "w", encoding="utf-8") as f:
