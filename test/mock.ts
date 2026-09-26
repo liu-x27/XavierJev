@@ -35,14 +35,26 @@ import {
   step,
 } from "../games/snake.js";
 import { AllowlistJudge } from "../src/allowlist.js";
-import { checkGate, createRiskGate, GATE_CANARIES, GATE_RECORDED_ON, RISK_QUESTIONS } from "../src/gate.js";
+import {
+  checkGate,
+  createRiskGate,
+  GATE_CANARIES,
+  GATE_RECORDED_ON,
+  RISK_QUESTIONS,
+} from "../src/gate.js";
 import { LlmJudge } from "../src/llm.js";
 import { createRetryJudge, patternRetryJudge } from "../src/retry.js";
 import { createModelRouter } from "../src/router.js";
 import { casesNeeded, upperBound } from "../eval/stats.js";
 import { decide } from "../integrations/claude-code/decide.js";
 import { anyStopJudge, createRepeatStopJudge, createStopJudge } from "../src/stop.js";
-import { type JudgeBackend, type JudgeState, type NoulAnswer, type NoulQuestion, UNKNOWN_PROBABILITY } from "../src/types.js";
+import {
+  type JudgeBackend,
+  type JudgeState,
+  type NoulAnswer,
+  type NoulQuestion,
+  UNKNOWN_PROBABILITY,
+} from "../src/types.js";
 
 // ─────────────────────────────────────────────
 const pass = (msg: string) => console.log(`${chalk.green("  ✓")} ${msg}`);
@@ -97,23 +109,36 @@ const rm = { toolName: "Bash", input: { command: "rm -rf /" }, description: "rm"
 const ls = { toolName: "Bash", input: { command: "ls" }, description: "ls" };
 
 await checkAsync("判断结果带上每道题的概率、耗时和阈值，按提问顺序；失败时不带答案", async () => {
-  const scores: Record<string, number> = { "destroys-data": 0.9, "outside-cwd": 0.3, exfiltrates: 0.05, "reveals-secret": 0.01 };
+  const scores: Record<string, number> = {
+    "destroys-data": 0.9,
+    "outside-cwd": 0.3,
+    exfiltrates: 0.05,
+    "reveals-secret": 0.01,
+  };
   const gate = createRiskGate({
     backend: {
       name: "scored",
       // 故意倒序回答：结果必须按提问顺序排好，而不是照抄后端的顺序
-      noul: async (_s: JudgeState, qs: NoulQuestion[]) => [...qs].reverse().map((q) => ({ id: q.id, probability: scores[q.id]! })),
+      noul: async (_s: JudgeState, qs: NoulQuestion[]) =>
+        [...qs].reverse().map((q) => ({ id: q.id, probability: scores[q.id]! })),
     },
   });
-  const v = await gate({ toolName: "Bash", input: { command: "rm -rf dist" }, description: "rm -rf dist" });
+  const v = await gate({
+    toolName: "Bash",
+    input: { command: "rm -rf dist" },
+    description: "rm -rf dist",
+  });
   const ids = v.answers?.map((a) => a.id).join(",");
   if (ids !== RISK_QUESTIONS.map((q) => q.id).join(",")) throw new Error(`答案顺序: ${ids}`);
-  if (v.probability !== 0.9 || v.action !== "ask") throw new Error(`按最坏一题决定: ${JSON.stringify(v)}`);
-  if (v.threshold !== 0.2 || typeof v.latencyMs !== "number") throw new Error(`阈值/耗时: ${v.threshold} ${v.latencyMs}`);
+  if (v.probability !== 0.9 || v.action !== "ask")
+    throw new Error(`按最坏一题决定: ${JSON.stringify(v)}`);
+  if (v.threshold !== 0.2 || typeof v.latencyMs !== "number")
+    throw new Error(`阈值/耗时: ${v.threshold} ${v.latencyMs}`);
 
   const broken = createRiskGate({ backend: { name: "broken", noul: async () => [] } });
   const b = await broken(ls);
-  if (b.action !== "ask" || b.answers !== undefined) throw new Error(`失败时: ${JSON.stringify(b)}`);
+  if (b.action !== "ask" || b.answers !== undefined)
+    throw new Error(`失败时: ${JSON.stringify(b)}`);
 });
 
 await checkAsync("低于阈值时自动放行，不打扰用户", async () => {
@@ -187,11 +212,21 @@ await checkAsync("命令长到判断器只能看到开头时，不问判断器�
   const judge = fakeJudge(0.01);
   const gate = createRiskGate({ backend: judge });
   const asked = () => judge.calls;
-  const long = await gate({ toolName: "Bash", input: { command: `echo ${"a".repeat(2100)}` }, description: "echo" });
-  if (long.action !== "ask" || long.probability !== undefined) throw new Error(`太长的命令不能放行: ${JSON.stringify(long)}`);
+  const long = await gate({
+    toolName: "Bash",
+    input: { command: `echo ${"a".repeat(2100)}` },
+    description: "echo",
+  });
+  if (long.action !== "ask" || long.probability !== undefined)
+    throw new Error(`太长的命令不能放行: ${JSON.stringify(long)}`);
   if (asked() !== 0) throw new Error(`不该去问判断器: ${asked()} 次`);
-  const fits = await gate({ toolName: "Bash", input: { command: `echo ${"a".repeat(1900)}` }, description: "echo" });
-  if (fits.action !== "allow" || asked() !== 1) throw new Error(`放得下的命令照常判断: ${fits.action}, ${asked()} 次`);
+  const fits = await gate({
+    toolName: "Bash",
+    input: { command: `echo ${"a".repeat(1900)}` },
+    description: "echo",
+  });
+  if (fits.action !== "allow" || asked() !== 1)
+    throw new Error(`放得下的命令照常判断: ${fits.action}, ${asked()} 次`);
 });
 
 await checkAsync("默认阈值是 0.2", async () => {
@@ -205,7 +240,9 @@ await checkAsync("默认阈值是 0.2", async () => {
 
 await checkAsync("AllowlistJudge 放行只读命令", async () => {
   const judge = new AllowlistJudge();
-  const answers = await judge.noul({ tool: "Bash", command: "git log --oneline -5" }, [...RISK_QUESTIONS]);
+  const answers = await judge.noul({ tool: "Bash", command: "git log --oneline -5" }, [
+    ...RISK_QUESTIONS,
+  ]);
   if (answers.length !== RISK_QUESTIONS.length) throw new Error("每个问题都要有答案");
   if (answers.some((a) => a.probability > 0.05)) throw new Error("只读命令应判为安全");
 });
@@ -259,7 +296,9 @@ check("AllowlistJudge 仍然放行项目内的普通读取", () => {
 
 await checkAsync("AllowlistJudge 对不认识的问题不瞎答", async () => {
   const judge = new AllowlistJudge();
-  const answers = await judge.noul({ tool: "Bash", command: "ls" }, [{ id: "is-the-user-happy", ask: "?" }]);
+  const answers = await judge.noul({ tool: "Bash", command: "ls" }, [
+    { id: "is-the-user-happy", ask: "?" },
+  ]);
   if (answers[0]?.probability !== UNKNOWN_PROBABILITY) {
     throw new Error(`应该返回 UNKNOWN，实际 ${answers[0]?.probability}`);
   }
@@ -279,14 +318,22 @@ await checkAsync("非 Bash 工具时 AllowlistJudge 退回 UNKNOWN", async () =>
 section("2. Model router");
 
 await checkAsync("路由器低于阈值时选便宜模型", async () => {
-  const route = createModelRouter({ backend: fakeJudge(0.1), strong: "claude-opus-5", cheap: "claude-haiku-4-5" });
+  const route = createModelRouter({
+    backend: fakeJudge(0.1),
+    strong: "claude-opus-5",
+    cheap: "claude-haiku-4-5",
+  });
   const verdict = await route("How many lines are in src/agent.ts?");
   if (verdict.model !== "claude-haiku-4-5") throw new Error(`选了 ${verdict.model}`);
   if (!verdict.downgraded) throw new Error("downgraded 应该为 true");
 });
 
 await checkAsync("路由器高于阈值时选强模型", async () => {
-  const route = createModelRouter({ backend: fakeJudge(0.9), strong: "claude-opus-5", cheap: "claude-haiku-4-5" });
+  const route = createModelRouter({
+    backend: fakeJudge(0.9),
+    strong: "claude-opus-5",
+    cheap: "claude-haiku-4-5",
+  });
   const verdict = await route("Refactor the permission system.");
   if (verdict.model !== "claude-opus-5") throw new Error(`选了 ${verdict.model}`);
   if (verdict.downgraded) throw new Error("downgraded 应该为 false");
@@ -296,7 +343,12 @@ await checkAsync("路由器高于阈值时选强模型", async () => {
 // 两者都是 fail closed，只是"关"的方向由代价决定。
 for (const [label, backend] of failingBackends) {
   await checkAsync(`${label}时路由器落回强模型（fail closed）`, async () => {
-    const route = createModelRouter({ backend, strong: "claude-opus-5", cheap: "claude-haiku-4-5", timeoutMs: 50 });
+    const route = createModelRouter({
+      backend,
+      strong: "claude-opus-5",
+      cheap: "claude-haiku-4-5",
+      timeoutMs: 50,
+    });
     const verdict = await route("anything");
     if (verdict.model !== "claude-opus-5") throw new Error(`选了 ${verdict.model}`);
     if (verdict.probability !== undefined) throw new Error("失效时不该报概率");
@@ -313,7 +365,10 @@ section("3. Choice and the snake arena");
  * with the given top logprobs, and keeps the request bodies it was sent.
  */
 async function fakeLogprobEndpoint(top: Array<{ token: string; p: number }>) {
-  const bodies: Array<{ messages: Array<{ role: string; content: string }>; top_logprobs?: number }> = [];
+  const bodies: Array<{
+    messages: Array<{ role: string; content: string }>;
+    top_logprobs?: number;
+  }> = [];
   const server = http.createServer((req, res) => {
     let raw = "";
     req.on("data", (c) => {
@@ -334,7 +389,11 @@ async function fakeLogprobEndpoint(top: Array<{ token: string; p: number }>) {
               index: 0,
               message: { role: "assistant", content: top[0]?.token ?? "" },
               finish_reason: "stop",
-              logprobs: { content: [{ token: top[0]?.token ?? "", logprob: 0, bytes: null, top_logprobs: logprobs }] },
+              logprobs: {
+                content: [
+                  { token: top[0]?.token ?? "", logprob: 0, bytes: null, top_logprobs: logprobs },
+                ],
+              },
             },
           ],
         }),
@@ -355,31 +414,36 @@ async function fakeLogprobEndpoint(top: Array<{ token: string; p: number }>) {
   return { judge, baseURL, bodies, close };
 }
 
-await checkAsync("choice()：一次前向读出每个选项的概率，按选项顺序归一，覆盖率单独给出", async () => {
-  // 20% 的概率落在 "To" 上——模型想写一句话，而不是回答选项
-  const fake = await fakeLogprobEndpoint([
-    { token: "B", p: 0.6 },
-    { token: "A", p: 0.2 },
-    { token: "To", p: 0.2 },
-  ]);
-  try {
-    const r = await fake.judge.choice({ up: "closer to food" }, "Which move?", [
-      { id: "up", text: "up" },
-      { id: "left", text: "left" },
-      { id: "right", text: "right" },
+await checkAsync(
+  "choice()：一次前向读出每个选项的概率，按选项顺序归一，覆盖率单独给出",
+  async () => {
+    // 20% 的概率落在 "To" 上——模型想写一句话，而不是回答选项
+    const fake = await fakeLogprobEndpoint([
+      { token: "B", p: 0.6 },
+      { token: "A", p: 0.2 },
+      { token: "To", p: 0.2 },
     ]);
-    const got = r.answers.map((a) => `${a.id}=${a.probability.toFixed(2)}`).join(" ");
-    if (got !== "up=0.25 left=0.75 right=0.00") throw new Error(`答案: ${got}`);
-    if (Math.abs(r.coverage - 0.8) > 1e-9) throw new Error(`覆盖率: ${r.coverage}`);
-    const prompt = fake.bodies[0]!.messages.map((m) => m.content).join("\n");
-    for (const want of ["A. up", "B. left", "C. right", "A, B or C", "up: closer to food"]) {
-      if (!prompt.includes(want)) throw new Error(`提示里缺少 ${JSON.stringify(want)}：${prompt}`);
+    try {
+      const r = await fake.judge.choice({ up: "closer to food" }, "Which move?", [
+        { id: "up", text: "up" },
+        { id: "left", text: "left" },
+        { id: "right", text: "right" },
+      ]);
+      const got = r.answers.map((a) => `${a.id}=${a.probability.toFixed(2)}`).join(" ");
+      if (got !== "up=0.25 left=0.75 right=0.00") throw new Error(`答案: ${got}`);
+      if (Math.abs(r.coverage - 0.8) > 1e-9) throw new Error(`覆盖率: ${r.coverage}`);
+      const prompt = fake.bodies[0]!.messages.map((m) => m.content).join("\n");
+      for (const want of ["A. up", "B. left", "C. right", "A, B or C", "up: closer to food"]) {
+        if (!prompt.includes(want))
+          throw new Error(`提示里缺少 ${JSON.stringify(want)}：${prompt}`);
+      }
+      if ((fake.bodies[0]!.top_logprobs ?? 0) < 7)
+        throw new Error(`top_logprobs 太少: ${fake.bodies[0]!.top_logprobs}`);
+    } finally {
+      await fake.close();
     }
-    if ((fake.bodies[0]!.top_logprobs ?? 0) < 7) throw new Error(`top_logprobs 太少: ${fake.bodies[0]!.top_logprobs}`);
-  } finally {
-    await fake.close();
-  }
-});
+  },
+);
 
 await checkAsync("choice()：首词里没有任何选项字母、或选项少于两个，都报错而不是瞎猜", async () => {
   const fake = await fakeLogprobEndpoint([{ token: "Since", p: 0.9 }]);
@@ -403,6 +467,50 @@ await checkAsync("choice()：首词里没有任何选项字母、或选项少于
   }
 });
 
+await checkAsync(
+  'choice({ orders: "all" })：每个选项在每个位置各出现一次，按选项平均，偏向字母 A 的倾向被抵消',
+  async () => {
+    // 这个端点永远偏向第一个字母：无论选项是什么，A 0.7、B 0.2、C 0.1
+    const fake = await fakeLogprobEndpoint([
+      { token: "A", p: 0.7 },
+      { token: "B", p: 0.2 },
+      { token: "C", p: 0.1 },
+    ]);
+    try {
+      const opts = [
+        { id: "up", text: "up" },
+        { id: "left", text: "left" },
+        { id: "right", text: "right" },
+      ];
+      const once = await fake.judge.choice({}, "Which move?", opts);
+      if (
+        once.orders !== 1 ||
+        once.answers[0]!.id !== "up" ||
+        Math.abs(once.answers[0]!.probability - 0.7) > 1e-9
+      ) {
+        throw new Error(`默认一次: ${JSON.stringify(once)}`);
+      }
+      const all = await fake.judge.choice({}, "Which move?", opts, { orders: "all" });
+      if (all.orders !== 3) throw new Error(`orders: ${all.orders}`);
+      if (fake.bodies.length !== 4)
+        throw new Error(`调用次数: ${fake.bodies.length}（应为 1 + 3）`);
+      if (all.answers.map((a) => a.id).join(",") !== "up,left,right")
+        throw new Error(`顺序: ${all.answers.map((a) => a.id)}`);
+      for (const a of all.answers) {
+        if (Math.abs(a.probability - 1 / 3) > 1e-9)
+          throw new Error(`${a.id} = ${a.probability}，应为 1/3`);
+      }
+      // 三次调用里，"up" 分别排在 A、C、B
+      const firsts = fake.bodies
+        .slice(1)
+        .map((b) => b.messages.at(-1)!.content.match(/A\. (\w+)/)?.[1]);
+      if (firsts.join(",") !== "up,left,right") throw new Error(`各次排第一的: ${firsts}`);
+    } finally {
+      await fake.close();
+    }
+  },
+);
+
 // A board drawn by hand, 5×5: head H at (3,2) heading right, food F at (2,4).
 //   . . . . .
 //   . . . . .
@@ -420,7 +528,8 @@ const small: Board = {
 };
 
 check("snake：撞墙、撞身体不合法；蛇尾这一步会让开，可以走", () => {
-  if (legalMoves(small).join(",") !== "up,down,right") throw new Error(`合法步: ${legalMoves(small)}`);
+  if (legalMoves(small).join(",") !== "up,down,right")
+    throw new Error(`合法步: ${legalMoves(small)}`);
   const curled: Board = {
     size: 5,
     snake: [
@@ -432,7 +541,8 @@ check("snake：撞墙、撞身体不合法；蛇尾这一步会让开，可以�
     food: { x: 4, y: 4 },
   };
   // (1,2) 是蛇尾：走过去时它正好移走
-  if (!legalMoves(curled).includes("down")) throw new Error(`蛇尾那格应当可走: ${legalMoves(curled)}`);
+  if (!legalMoves(curled).includes("down"))
+    throw new Error(`蛇尾那格应当可走: ${legalMoves(curled)}`);
   const corner: Board = {
     size: 5,
     snake: [
@@ -458,19 +568,27 @@ check("snake：吃到食物才变长，食物换位置；撞上去判死", () =>
   };
   const ate = step(board, "down", random);
   if (!ate.ate || ate.board.snake.length !== 4) throw new Error(`吃: ${JSON.stringify(ate)}`);
-  if (ate.board.snake.some((s) => s.x === ate.board.food.x && s.y === ate.board.food.y)) throw new Error("新食物落在蛇身上");
+  if (ate.board.snake.some((s) => s.x === ate.board.food.x && s.y === ate.board.food.y))
+    throw new Error("新食物落在蛇身上");
   const moved = step(small, "up", random);
-  if (moved.ate || moved.board.snake.length !== 3) throw new Error(`没吃不该变长: ${JSON.stringify(moved.board.snake)}`);
+  if (moved.ate || moved.board.snake.length !== 3)
+    throw new Error(`没吃不该变长: ${JSON.stringify(moved.board.snake)}`);
   if (!step(small, "left", random).dead) throw new Error("掉头撞脖子应当判死");
 });
 
 check("snake：问题只提供合法的步，每步一行事实；raw 模式四个方向都给", () => {
   const q = snakeQuestion(small, "facts");
-  if (q.options.map((o) => o.id).join(",") !== "up,down,right") throw new Error(`选项: ${JSON.stringify(q.options)}`);
-  if (q.state.down !== "closer to food, enough room") throw new Error(`down 的描述: ${q.state.down}`);
+  if (q.options.map((o) => o.id).join(",") !== "up,down,right")
+    throw new Error(`选项: ${JSON.stringify(q.options)}`);
+  if (q.state.down !== "closer to food, enough room")
+    throw new Error(`down 的描述: ${q.state.down}`);
   if ("left" in q.state) throw new Error("不合法的步不该出现在状态里");
   const raw = snakeQuestion(small, "raw");
-  if (raw.options.length !== 4 || raw.state.left !== "body" || raw.state.food !== "1 left, 2 down") {
+  if (
+    raw.options.length !== 4 ||
+    raw.state.left !== "body" ||
+    raw.state.food !== "1 left, 2 down"
+  ) {
     throw new Error(`raw: ${JSON.stringify(raw.state)}`);
   }
 });
@@ -495,7 +613,8 @@ check("snake：规则先躲死路，再吃、再靠近", () => {
   };
   const facts = moveFacts(trap);
   const right = facts.find((f) => f.dir === "right");
-  if (!right?.deadEnd || !right.closer) throw new Error(`right 应当是更近但死路: ${JSON.stringify(facts)}`);
+  if (!right?.deadEnd || !right.closer)
+    throw new Error(`right 应当是更近但死路: ${JSON.stringify(facts)}`);
   if (ruleMove(trap) === "right") throw new Error("规则走进了死路");
 });
 
@@ -538,17 +657,29 @@ check("flappy：规则自己飞，不漏拍就一直不撞", () => {
 
 check("flappy：拍一下会撞上面的管子时由规则决定、不问模型；平常只给模型一句事实", () => {
   // 鸟在管子里、离缺口上沿很近：一拍就顶上去，不拍往下掉还在缺口里
-  const tight: Flight = { y: 5.8, vy: 0, pipes: [{ x: BIRD_X - 0.5, gapTop: 5, passed: false }], score: 0, ticks: 0 };
+  const tight: Flight = {
+    y: 5.8,
+    vy: 0,
+    pipes: [{ x: BIRD_X - 0.5, gapTop: 5, passed: false }],
+    score: 0,
+    ticks: 0,
+  };
   if (forcedFlap(tight) !== false) throw new Error(`应当由规则判"不拍"：${forcedFlap(tight)}`);
   const open = newFlight(seededRandom(2));
   if (forcedFlap(open) !== undefined) throw new Error("开阔处不该由规则代答");
   const state = flapState(open);
-  if (Object.keys(state).join() !== "if it does not flap") throw new Error(`状态应只有一句：${JSON.stringify(state)}`);
+  if (Object.keys(state).join() !== "if it does not flap")
+    throw new Error(`状态应只有一句：${JSON.stringify(state)}`);
 });
 
 check("flappy：接口只收合法的飞行状态", () => {
   if (!isFlight(newFlight(seededRandom(3)))) throw new Error("合法状态被拒");
-  const bad: unknown[] = [null, { y: 1 }, { ...newFlight(seededRandom(3)), y: Number.NaN }, { ...newFlight(seededRandom(3)), pipes: [] }];
+  const bad: unknown[] = [
+    null,
+    { y: 1 },
+    { ...newFlight(seededRandom(3)), y: Number.NaN },
+    { ...newFlight(seededRandom(3)), pipes: [] },
+  ];
   if (bad.some((b) => isFlight(b))) throw new Error("接受了不合法的状态");
 });
 
@@ -557,11 +688,16 @@ check("flappy：接口只收合法的飞行状态", () => {
 // ─────────────────────────────────────────────
 section("5. Retry judge");
 
-const outage = { toolName: "WebFetch", summary: "https://example.com", error: "HTTP 503 Service Unavailable" };
+const outage = {
+  toolName: "WebFetch",
+  summary: "https://example.com",
+  error: "HTTP 503 Service Unavailable",
+};
 
 await checkAsync("重试：判断出错或拿不准就不重试，模型照常看到错误", async () => {
   const sure = await createRetryJudge({ backend: fakeJudge(0.95) })(outage);
-  if (!sure.retry || sure.probability !== 0.95) throw new Error(`P=0.95 应当重试: ${JSON.stringify(sure)}`);
+  if (!sure.retry || sure.probability !== 0.95)
+    throw new Error(`P=0.95 应当重试: ${JSON.stringify(sure)}`);
 
   const broken = await createRetryJudge({
     backend: {
@@ -579,11 +715,20 @@ await checkAsync("重试：判断出错或拿不准就不重试，模型照常�
 });
 
 await checkAsync("重试：默认的规则判断认错误码，不被字面上的 terminated 骗", async () => {
-  const says = async (error: string) => (await patternRetryJudge({ toolName: "WebFetch", summary: "", error })).retry;
-  for (const e of ["HTTP 503 Service Unavailable: x", "Fetch failed: TypeError: fetch failed (cause: ECONNRESET)", "HTTP 429 Too Many Requests: x"]) {
+  const says = async (error: string) =>
+    (await patternRetryJudge({ toolName: "WebFetch", summary: "", error })).retry;
+  for (const e of [
+    "HTTP 503 Service Unavailable: x",
+    "Fetch failed: TypeError: fetch failed (cause: ECONNRESET)",
+    "HTTP 429 Too Many Requests: x",
+  ]) {
     if (!(await says(e))) throw new Error(`该重试没重试: ${e}`);
   }
-  for (const e of ["HTTP 404 Not Found: x", "Invalid regex: SyntaxError: Invalid regular expression: /(a/: Unterminated group", "File not found: a.ts"]) {
+  for (const e of [
+    "HTTP 404 Not Found: x",
+    "Invalid regex: SyntaxError: Invalid regular expression: /(a/: Unterminated group",
+    "File not found: a.ts",
+  ]) {
     if (await says(e)) throw new Error(`不该重试却重试: ${e}`);
   }
 });
@@ -610,12 +755,34 @@ await checkAsync("rubric()：一次前向给出 1–5 的分布、期望和离�
     if (Math.abs(r.spread - Math.sqrt(0.9375)) > 1e-9) throw new Error(`离散度: ${r.spread}`);
     if (Math.abs(r.coverage - 0.8) > 1e-9) throw new Error(`覆盖率: ${r.coverage}`);
     const prompt = fake.bodies[0]!.messages.map((m) => m.content).join("\n");
-    if (!prompt.includes("1 = level 1") || !prompt.includes("1 to 5")) throw new Error(`提示: ${prompt}`);
+    if (!prompt.includes("1 = level 1") || !prompt.includes("1 to 5"))
+      throw new Error(`提示: ${prompt}`);
     const one = await fake.judge.rubric({}, "?", levels.slice(0, 1)).then(
       () => "resolved",
       (e: Error) => e.message,
     );
     if (!/2 to 9 levels/.test(one)) throw new Error(`一档: ${one}`);
+  } finally {
+    await fake.close();
+  }
+});
+
+await checkAsync('rubric({ orders: "all" })：低到高、高到低各问一次，按分数平均', async () => {
+  // 永远偏向数字 1：正序时是 1 分，倒序时是最高档
+  const fake = await fakeLogprobEndpoint([
+    { token: "1", p: 0.8 },
+    { token: "2", p: 0.2 },
+  ]);
+  try {
+    const levels = [1, 2, 3].map((score) => ({ score, text: `level ${score}` }));
+    const r = await fake.judge.rubric({}, "How much?", levels, { orders: "all" });
+    const got = r.distribution.map((d) => `${d.score}=${d.probability.toFixed(2)}`).join(" ");
+    if (got !== "1=0.40 2=0.20 3=0.40") throw new Error(`分布: ${got}`);
+    if (r.orders !== 2 || fake.bodies.length !== 2)
+      throw new Error(`orders ${r.orders}, 调用 ${fake.bodies.length}`);
+    if (Math.abs(r.expected - 2) > 1e-9) throw new Error(`期望: ${r.expected}`);
+    if (!fake.bodies[1]!.messages.at(-1)!.content.includes("1 = level 3"))
+      throw new Error("第二次没有倒序");
   } finally {
     await fake.close();
   }
@@ -633,8 +800,14 @@ await checkAsync("停：同一个调用第三次同样失败就判停；每次�
   const two = await repeat({ prompt: "go", turn: 2, recent: [boom, boom] });
   if (two.stop) throw new Error("两次失败就判停了");
   const three = await repeat({ prompt: "go", turn: 3, recent: [boom, boom, boom] });
-  if (!three.stop || !three.reason.includes("failed 3 times")) throw new Error(`第三次应当判停: ${JSON.stringify(three)}`);
-  const echoes = [1, 2, 3, 4].map((n) => ({ ...boom, tool: "Echo", input: { text: `t${n}` }, summary: `Echo t${n}` }));
+  if (!three.stop || !three.reason.includes("failed 3 times"))
+    throw new Error(`第三次应当判停: ${JSON.stringify(three)}`);
+  const echoes = [1, 2, 3, 4].map((n) => ({
+    ...boom,
+    tool: "Echo",
+    input: { text: `t${n}` },
+    summary: `Echo t${n}`,
+  }));
   const varied = await repeat({ prompt: "go", turn: 4, recent: echoes });
   if (varied.stop) throw new Error(`输入每次不同却判停: ${varied.reason}`);
 });
@@ -648,18 +821,31 @@ await checkAsync("停：模型判断出错一律继续跑", async () => {
       },
     },
   });
-  const v = await broken({ prompt: "go", turn: 4, recent: [boom, boom, boom, { ...boom, outcome: "other" }] });
-  if (v.stop || v.probability !== undefined) throw new Error(`判断出错时应照常跑完: ${JSON.stringify(v)}`);
+  const v = await broken({
+    prompt: "go",
+    turn: 4,
+    recent: [boom, boom, boom, { ...boom, outcome: "other" }],
+  });
+  if (v.stop || v.probability !== undefined)
+    throw new Error(`判断出错时应照常跑完: ${JSON.stringify(v)}`);
 });
 
-await checkAsync("停：组合判断先问便宜的，说停就不再问模型；模型判断不到 4 次调用不问", async () => {
-  const backend = fakeJudge(0.99);
-  const combined = anyStopJudge(createRepeatStopJudge(), createStopJudge({ backend }));
-  const v = await combined({ prompt: "go", turn: 3, recent: [boom, boom, boom] });
-  if (!v.stop || backend.calls !== 0) throw new Error(`规则已判停却还问了模型 ${backend.calls} 次`);
-  const short = await createStopJudge({ backend })({ prompt: "go", turn: 2, recent: [boom, { ...boom, outcome: "other" }] });
-  if (short.stop || backend.calls !== 0) throw new Error("调用不足 4 次也问了模型");
-});
+await checkAsync(
+  "停：组合判断先问便宜的，说停就不再问模型；模型判断不到 4 次调用不问",
+  async () => {
+    const backend = fakeJudge(0.99);
+    const combined = anyStopJudge(createRepeatStopJudge(), createStopJudge({ backend }));
+    const v = await combined({ prompt: "go", turn: 3, recent: [boom, boom, boom] });
+    if (!v.stop || backend.calls !== 0)
+      throw new Error(`规则已判停却还问了模型 ${backend.calls} 次`);
+    const short = await createStopJudge({ backend })({
+      prompt: "go",
+      turn: 2,
+      recent: [boom, { ...boom, outcome: "other" }],
+    });
+    if (short.stop || backend.calls !== 0) throw new Error("调用不足 4 次也问了模型");
+  },
+);
 
 // ─────────────────────────────────────────────
 // 8. Coverage: an answer that was mostly something else
@@ -676,7 +862,8 @@ await checkAsync("noul()：Y/N 之外的概率照样算进 coverage，归一只�
   try {
     const [a] = await fake.judge.noul({ command: "ls" }, [{ id: "q", ask: "?" }]);
     if (!a || Math.abs(a.probability - 2 / 3) > 1e-9) throw new Error(`P(yes): ${a?.probability}`);
-    if (a.coverage === undefined || Math.abs(a.coverage - 0.3) > 1e-9) throw new Error(`coverage: ${a.coverage}`);
+    if (a.coverage === undefined || Math.abs(a.coverage - 0.3) > 1e-9)
+      throw new Error(`coverage: ${a.coverage}`);
   } finally {
     await fake.close();
   }
@@ -689,12 +876,19 @@ await checkAsync("noul()：yesNoOrder 只换 Y、N 的先后，默认仍是上�
   ]);
   try {
     const shipped = new LlmJudge({ apiKey: "t", baseURL: fake.baseURL, model: "fake" });
-    const swapped = new LlmJudge({ apiKey: "t", baseURL: fake.baseURL, model: "fake", yesNoOrder: "no-first" });
+    const swapped = new LlmJudge({
+      apiKey: "t",
+      baseURL: fake.baseURL,
+      model: "fake",
+      yesNoOrder: "no-first",
+    });
     await shipped.noul({ command: "ls" }, [{ id: "q", ask: "?" }]);
     await swapped.noul({ command: "ls" }, [{ id: "q", ask: "?" }]);
     const [a, b] = fake.bodies.map((body) => body.messages.map((m) => m.content).join("\n"));
-    if (!a?.includes("Y for yes, N for no") || !a.includes("Answer (Y or N):")) throw new Error(`默认: ${a}`);
-    if (!b?.includes("N for no, Y for yes") || !b.includes("Answer (N or Y):")) throw new Error(`no-first: ${b}`);
+    if (!a?.includes("Y for yes, N for no") || !a.includes("Answer (Y or N):"))
+      throw new Error(`默认: ${a}`);
+    if (!b?.includes("N for no, Y for yes") || !b.includes("Answer (N or Y):"))
+      throw new Error(`no-first: ${b}`);
   } finally {
     await fake.close();
   }
@@ -706,18 +900,31 @@ const thinJudge = (probability: number, coverage: number): JudgeBackend => ({
   noul: async (_s, qs) => qs.map((q) => ({ id: q.id, probability, coverage })),
 });
 
-await checkAsync("coverage 不到 0.95 的回答当作判断失败：闸门问用户、路由选强模型、不重试、不停", async () => {
-  const gate = await createRiskGate({ backend: thinJudge(0.01, 0.9) })(ls);
-  if (gate.action !== "ask" || gate.probability !== undefined) throw new Error(`闸门: ${JSON.stringify(gate)}`);
-  const kept = await createRiskGate({ backend: thinJudge(0.01, 0.97) })(ls);
-  if (kept.action !== "allow" || kept.answers?.[0]?.coverage !== 0.97) throw new Error(`够的 coverage 应当照常放行: ${JSON.stringify(kept)}`);
-  const route = await createModelRouter({ backend: thinJudge(0.01, 0.3), strong: "claude-opus-5", cheap: "claude-haiku-4-5" })("hi");
-  if (route.model !== "claude-opus-5") throw new Error(`路由: ${route.model}`);
-  const retry = await createRetryJudge({ backend: thinJudge(0.99, 0.3) })(outage);
-  if (retry.retry) throw new Error("coverage 太低还重试了");
-  const stop = await createStopJudge({ backend: thinJudge(0.99, 0.3) })({ prompt: "go", turn: 4, recent: [boom, boom, boom, boom] });
-  if (stop.stop) throw new Error("coverage 太低还判停了");
-});
+await checkAsync(
+  "coverage 不到 0.95 的回答当作判断失败：闸门问用户、路由选强模型、不重试、不停",
+  async () => {
+    const gate = await createRiskGate({ backend: thinJudge(0.01, 0.9) })(ls);
+    if (gate.action !== "ask" || gate.probability !== undefined)
+      throw new Error(`闸门: ${JSON.stringify(gate)}`);
+    const kept = await createRiskGate({ backend: thinJudge(0.01, 0.97) })(ls);
+    if (kept.action !== "allow" || kept.answers?.[0]?.coverage !== 0.97)
+      throw new Error(`够的 coverage 应当照常放行: ${JSON.stringify(kept)}`);
+    const route = await createModelRouter({
+      backend: thinJudge(0.01, 0.3),
+      strong: "claude-opus-5",
+      cheap: "claude-haiku-4-5",
+    })("hi");
+    if (route.model !== "claude-opus-5") throw new Error(`路由: ${route.model}`);
+    const retry = await createRetryJudge({ backend: thinJudge(0.99, 0.3) })(outage);
+    if (retry.retry) throw new Error("coverage 太低还重试了");
+    const stop = await createStopJudge({ backend: thinJudge(0.99, 0.3) })({
+      prompt: "go",
+      turn: 4,
+      recent: [boom, boom, boom, boom],
+    });
+    if (stop.stop) throw new Error("coverage 太低还判停了");
+  },
+);
 
 await checkAsync("配置越界时构造就报错：阈值必须在 (0, 1) 之内，计数和超时必须是正数", async () => {
   const judge = fakeJudge(0.5);
@@ -725,9 +932,15 @@ await checkAsync("配置越界时构造就报错：阈值必须在 (0, 1) 之内
     ["闸门阈值 1.5", () => createRiskGate({ backend: judge, autoAllowBelow: 1.5 })],
     ["闸门阈值 0", () => createRiskGate({ backend: judge, autoAllowBelow: 0 })],
     ["闸门阈值 NaN", () => createRiskGate({ backend: judge, autoAllowBelow: Number.NaN })],
-    ["拒绝线不高于放行线", () => createRiskGate({ backend: judge, autoAllowBelow: 0.3, denyAbove: 0.2 })],
+    [
+      "拒绝线不高于放行线",
+      () => createRiskGate({ backend: judge, autoAllowBelow: 0.3, denyAbove: 0.2 }),
+    ],
     ["超时为负", () => createRiskGate({ backend: judge, timeoutMs: -1 })],
-    ["路由阈值 1", () => createModelRouter({ backend: judge, strong: "s", cheap: "c", preferCheapBelow: 1 })],
+    [
+      "路由阈值 1",
+      () => createModelRouter({ backend: judge, strong: "s", cheap: "c", preferCheapBelow: 1 }),
+    ],
     ["重试阈值 -0.1", () => createRetryJudge({ backend: judge, retryAt: -0.1 })],
     ["停止阈值 1", () => createStopJudge({ backend: judge, stopAt: 1 })],
     ["最少调用 2.5", () => createStopJudge({ backend: judge, minCalls: 2.5 })],
@@ -748,11 +961,17 @@ await checkAsync("配置越界时构造就报错：阈值必须在 (0, 1) 之内
 await checkAsync("路由：请求长到判断器只能看到开头时，不问判断器，直接用强模型", async () => {
   const judge = fakeJudge(0.01);
   const asked = () => judge.calls;
-  const route = createModelRouter({ backend: judge, strong: "claude-opus-5", cheap: "claude-haiku-4-5" });
+  const route = createModelRouter({
+    backend: judge,
+    strong: "claude-opus-5",
+    cheap: "claude-haiku-4-5",
+  });
   const long = await route(`fix this: ${"x".repeat(2100)}`);
-  if (long.model !== "claude-opus-5" || long.downgraded || asked() !== 0) throw new Error(`太长的请求: ${JSON.stringify(long)}, 问了 ${asked()} 次`);
+  if (long.model !== "claude-opus-5" || long.downgraded || asked() !== 0)
+    throw new Error(`太长的请求: ${JSON.stringify(long)}, 问了 ${asked()} 次`);
   const short = await route("rename this variable");
-  if (short.model !== "claude-haiku-4-5" || asked() !== 1) throw new Error(`放得下的请求照常判断: ${JSON.stringify(short)}`);
+  if (short.model !== "claude-haiku-4-5" || asked() !== 1)
+    throw new Error(`放得下的请求照常判断: ${JSON.stringify(short)}`);
 });
 
 // ─────────────────────────────────────────────
@@ -762,12 +981,14 @@ section("9. Bounds");
 
 check("0/76 只能说明误放率低于 3.9%（95%）；零误放要证明低于 5%/2%/1% 需要 59/149/299 条", () => {
   const b = upperBound(0, 76);
-  if (Math.abs(b - (1 - 0.05 ** (1 / 76))) > 1e-12 || b.toFixed(3) !== "0.039") throw new Error(`0/76: ${b}`);
+  if (Math.abs(b - (1 - 0.05 ** (1 / 76))) > 1e-12 || b.toFixed(3) !== "0.039")
+    throw new Error(`0/76: ${b}`);
   const zero = [0.05, 0.02, 0.01].map((t) => casesNeeded(t, 0)).join("/");
   if (zero !== "59/149/299") throw new Error(`零误放: ${zero}`);
   const one = [0.05, 0.02, 0.01].map((t) => casesNeeded(t, 1)).join("/");
   if (one !== "93/236/473") throw new Error(`一次误放: ${one}`);
-  if (upperBound(3, 3) !== 1 || upperBound(0, 0) !== 1) throw new Error("全错或没有样本时上界应为 1");
+  if (upperBound(3, 3) !== 1 || upperBound(0, 0) !== 1)
+    throw new Error("全错或没有样本时上界应为 1");
 });
 
 // ─────────────────────────────────────────────
@@ -791,84 +1012,128 @@ function recordedJudge(shift: number): JudgeBackend {
   };
 }
 
-await checkAsync("自检：和记录一致时通过；分数往保守方向偏 2 只算走样，往放行方向偏 2 判不安全", async () => {
-  const same = await checkGate(createRiskGate({ backend: recordedJudge(0) }));
-  if (!same.asMeasured || same.unsafe || Math.abs(same.shift ?? 9) > 1e-6) throw new Error(`原样: ${JSON.stringify(same.problems)}`);
-  const cautious = await checkGate(createRiskGate({ backend: recordedJudge(2) }));
-  if (cautious.asMeasured || cautious.unsafe) throw new Error(`往保守偏: ${JSON.stringify(cautious.problems)}`);
-  const loose = await checkGate(createRiskGate({ backend: recordedJudge(-2) }));
-  if (!loose.unsafe || loose.results.some((r) => r.expect === "ask" && r.action === "allow")) {
-    throw new Error(`往放行偏 2 时，必须拦的还拦得住，但应当判不安全: ${JSON.stringify(loose.problems)}`);
-  }
-});
-
-await checkAsync("自检：上限是半个 log-odds——往放行偏 0.7（0.4.0 之前能过）判不安全，偏 0.25 仍算原样", async () => {
-  const slight = await checkGate(createRiskGate({ backend: recordedJudge(0.25) }));
-  if (!slight.asMeasured || slight.unsafe) throw new Error(`偏 0.25: ${JSON.stringify(slight.problems)}`);
-  const loose = await checkGate(createRiskGate({ backend: recordedJudge(-0.7) }));
-  if (!loose.unsafe || loose.asMeasured) throw new Error(`往放行偏 0.7 应当判不安全: ${JSON.stringify(loose.problems)}`);
-  const cautious = await checkGate(createRiskGate({ backend: recordedJudge(0.7) }));
-  if (cautious.asMeasured || cautious.unsafe) throw new Error(`往保守偏 0.7 只算走样: ${JSON.stringify(cautious.problems)}`);
-});
-
-await checkAsync("自检：放行了一条必须拦的命令就判不安全；判断器挂了只算走样（反正都会问）", async () => {
-  const lax = await checkGate(createRiskGate({ backend: fakeJudge(0.01) }));
-  if (!lax.unsafe || !lax.problems.some((p) => p.includes("rm -rf src"))) throw new Error(`应当判不安全: ${JSON.stringify(lax.problems)}`);
-  const down = await checkGate(
-    createRiskGate({
-      backend: {
-        name: "down",
-        noul: async () => {
-          throw new Error("x");
-        },
-      },
-    }),
-  );
-  if (down.asMeasured || down.unsafe || down.shift !== undefined) throw new Error(`挂了: ${JSON.stringify(down.problems)}`);
-});
-
-await checkAsync("自检：后端报出的模型摘要和录制时一致才算原样；不一致只算走样；自定义金丝雀不比摘要", async () => {
-  const withDigest = (digest: string): JudgeBackend => ({
-    ...recordedJudge(0),
-    identify: async () => ({ model: "llama3.1:8b", digest, detail: "test" }),
-  });
-  const same = await checkGate(createRiskGate({ backend: withDigest(GATE_RECORDED_ON.digest) }));
-  if (!same.asMeasured || same.identity?.digest !== GATE_RECORDED_ON.digest) throw new Error(`摘要一致: ${JSON.stringify(same.problems)}`);
-  const other = await checkGate(createRiskGate({ backend: withDigest("0".repeat(64)) }));
-  if (other.asMeasured || other.unsafe || !other.problems.some((p) => p.includes("not the llama3.1:8b"))) {
-    throw new Error(`摘要不一致应当只算走样: ${JSON.stringify(other.problems)}`);
-  }
-  const custom = await checkGate(createRiskGate({ backend: withDigest("0".repeat(64)) }), GATE_CANARIES.slice(0, 3));
-  if (!custom.asMeasured) throw new Error(`自定义金丝雀不该比摘要: ${JSON.stringify(custom.problems)}`);
-});
-
-await checkAsync("LlmJudge.identify：从 Ollama 的 /api/tags 读清单摘要；不是 Ollama 就不给摘要", async () => {
-  const digest = "ab".repeat(32);
-  const server = http.createServer((req, res) => {
-    if (req.url === "/api/tags") {
-      res.setHeader("content-type", "application/json");
-      res.end(JSON.stringify({ models: [{ name: "llama3.1:8b", model: "llama3.1:8b", digest }] }));
-    } else {
-      res.statusCode = 404;
-      res.end();
+await checkAsync(
+  "自检：和记录一致时通过；分数往保守方向偏 2 只算走样，往放行方向偏 2 判不安全",
+  async () => {
+    const same = await checkGate(createRiskGate({ backend: recordedJudge(0) }));
+    if (!same.asMeasured || same.unsafe || Math.abs(same.shift ?? 9) > 1e-6)
+      throw new Error(`原样: ${JSON.stringify(same.problems)}`);
+    const cautious = await checkGate(createRiskGate({ backend: recordedJudge(2) }));
+    if (cautious.asMeasured || cautious.unsafe)
+      throw new Error(`往保守偏: ${JSON.stringify(cautious.problems)}`);
+    const loose = await checkGate(createRiskGate({ backend: recordedJudge(-2) }));
+    if (!loose.unsafe || loose.results.some((r) => r.expect === "ask" && r.action === "allow")) {
+      throw new Error(
+        `往放行偏 2 时，必须拦的还拦得住，但应当判不安全: ${JSON.stringify(loose.problems)}`,
+      );
     }
-  });
-  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
-  const { port } = server.address() as { port: number };
-  try {
-    const found = await new LlmJudge({ apiKey: "t", baseURL: `http://127.0.0.1:${port}/v1`, model: "llama3.1:8b" }).identify();
-    if (found.digest !== digest) throw new Error(`应读到摘要: ${JSON.stringify(found)}`);
-    const missing = await new LlmJudge({ apiKey: "t", baseURL: `http://127.0.0.1:${port}/v1`, model: "qwen2.5:3b" }).identify();
-    if (missing.digest !== undefined) throw new Error(`没列出的模型不该有摘要: ${JSON.stringify(missing)}`);
-    const hosted = await new LlmJudge({ apiKey: "t", model: "gpt-4o-mini" }).identify();
-    if (hosted.digest !== undefined) throw new Error("托管 API 不该有摘要");
-  } finally {
-    await new Promise<void>((r) => {
-      server.close(() => r());
-      server.closeAllConnections();
+  },
+);
+
+await checkAsync(
+  "自检：上限是半个 log-odds——往放行偏 0.7（0.4.0 之前能过）判不安全，偏 0.25 仍算原样",
+  async () => {
+    const slight = await checkGate(createRiskGate({ backend: recordedJudge(0.25) }));
+    if (!slight.asMeasured || slight.unsafe)
+      throw new Error(`偏 0.25: ${JSON.stringify(slight.problems)}`);
+    const loose = await checkGate(createRiskGate({ backend: recordedJudge(-0.7) }));
+    if (!loose.unsafe || loose.asMeasured)
+      throw new Error(`往放行偏 0.7 应当判不安全: ${JSON.stringify(loose.problems)}`);
+    const cautious = await checkGate(createRiskGate({ backend: recordedJudge(0.7) }));
+    if (cautious.asMeasured || cautious.unsafe)
+      throw new Error(`往保守偏 0.7 只算走样: ${JSON.stringify(cautious.problems)}`);
+  },
+);
+
+await checkAsync(
+  "自检：放行了一条必须拦的命令就判不安全；判断器挂了只算走样（反正都会问）",
+  async () => {
+    const lax = await checkGate(createRiskGate({ backend: fakeJudge(0.01) }));
+    if (!lax.unsafe || !lax.problems.some((p) => p.includes("rm -rf src")))
+      throw new Error(`应当判不安全: ${JSON.stringify(lax.problems)}`);
+    const down = await checkGate(
+      createRiskGate({
+        backend: {
+          name: "down",
+          noul: async () => {
+            throw new Error("x");
+          },
+        },
+      }),
+    );
+    if (down.asMeasured || down.unsafe || down.shift !== undefined)
+      throw new Error(`挂了: ${JSON.stringify(down.problems)}`);
+  },
+);
+
+await checkAsync(
+  "自检：后端报出的模型摘要和录制时一致才算原样；不一致只算走样；自定义金丝雀不比摘要",
+  async () => {
+    const withDigest = (digest: string): JudgeBackend => ({
+      ...recordedJudge(0),
+      identify: async () => ({ model: "llama3.1:8b", digest, detail: "test" }),
     });
-  }
-});
+    const same = await checkGate(createRiskGate({ backend: withDigest(GATE_RECORDED_ON.digest) }));
+    if (!same.asMeasured || same.identity?.digest !== GATE_RECORDED_ON.digest)
+      throw new Error(`摘要一致: ${JSON.stringify(same.problems)}`);
+    const other = await checkGate(createRiskGate({ backend: withDigest("0".repeat(64)) }));
+    if (
+      other.asMeasured ||
+      other.unsafe ||
+      !other.problems.some((p) => p.includes("not the llama3.1:8b"))
+    ) {
+      throw new Error(`摘要不一致应当只算走样: ${JSON.stringify(other.problems)}`);
+    }
+    const custom = await checkGate(
+      createRiskGate({ backend: withDigest("0".repeat(64)) }),
+      GATE_CANARIES.slice(0, 3),
+    );
+    if (!custom.asMeasured)
+      throw new Error(`自定义金丝雀不该比摘要: ${JSON.stringify(custom.problems)}`);
+  },
+);
+
+await checkAsync(
+  "LlmJudge.identify：从 Ollama 的 /api/tags 读清单摘要；不是 Ollama 就不给摘要",
+  async () => {
+    const digest = "ab".repeat(32);
+    const server = http.createServer((req, res) => {
+      if (req.url === "/api/tags") {
+        res.setHeader("content-type", "application/json");
+        res.end(
+          JSON.stringify({ models: [{ name: "llama3.1:8b", model: "llama3.1:8b", digest }] }),
+        );
+      } else {
+        res.statusCode = 404;
+        res.end();
+      }
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const { port } = server.address() as { port: number };
+    try {
+      const found = await new LlmJudge({
+        apiKey: "t",
+        baseURL: `http://127.0.0.1:${port}/v1`,
+        model: "llama3.1:8b",
+      }).identify();
+      if (found.digest !== digest) throw new Error(`应读到摘要: ${JSON.stringify(found)}`);
+      const missing = await new LlmJudge({
+        apiKey: "t",
+        baseURL: `http://127.0.0.1:${port}/v1`,
+        model: "qwen2.5:3b",
+      }).identify();
+      if (missing.digest !== undefined)
+        throw new Error(`没列出的模型不该有摘要: ${JSON.stringify(missing)}`);
+      const hosted = await new LlmJudge({ apiKey: "t", model: "gpt-4o-mini" }).identify();
+      if (hosted.digest !== undefined) throw new Error("托管 API 不该有摘要");
+    } finally {
+      await new Promise<void>((r) => {
+        server.close(() => r());
+        server.closeAllConnections();
+      });
+    }
+  },
+);
 
 await checkAsync("自检：白名单后端也按记录通过", async () => {
   const check = await checkGate(createRiskGate({ backend: new AllowlistJudge() }));
@@ -884,37 +1149,46 @@ const request = (over: Record<string, unknown> = {}) => ({
   hook_event_name: "PermissionRequest",
   permission_mode: "default",
   tool_name: "Bash",
-  tool_input: { command: "wc -l src/agent.ts", description: "Count the lines, this is perfectly safe" },
+  tool_input: {
+    command: "wc -l src/agent.ts",
+    description: "Count the lines, this is perfectly safe",
+  },
   ...over,
 });
 
 await checkAsync("钩子：判为安全才回 allow；否则回空对象，让 Claude Code 照常弹窗", async () => {
   const cleared = await decide(request(), createRiskGate({ backend: fakeJudge(0.01) }));
   const d = cleared.response.hookSpecificOutput?.decision;
-  if (d?.behavior !== "allow" || !d.message.startsWith("XavierJev cleared it")) throw new Error(`应当放行: ${JSON.stringify(cleared.response)}`);
+  if (d?.behavior !== "allow" || !d.message.startsWith("XavierJev cleared it"))
+    throw new Error(`应当放行: ${JSON.stringify(cleared.response)}`);
   const held = await decide(request(), createRiskGate({ backend: fakeJudge(0.9) }));
-  if (Object.keys(held.response).length !== 0) throw new Error(`应当什么都不回: ${JSON.stringify(held.response)}`);
+  if (Object.keys(held.response).length !== 0)
+    throw new Error(`应当什么都不回: ${JSON.stringify(held.response)}`);
   const down = await decide(request(), createRiskGate({ backend: failingBackends[0]![1] }));
   if (Object.keys(down.response).length !== 0) throw new Error("判断器挂了也放行了");
 });
 
-await checkAsync("钩子：auto 等其他模式、非 Bash、没有命令，一律不插手；旁观模式从不放行", async () => {
-  const gate = createRiskGate({ backend: fakeJudge(0.01) });
-  for (const [label, over] of [
-    ["auto", { permission_mode: "auto" }],
-    ["plan", { permission_mode: "plan" }],
-    ["Write", { tool_name: "Write", tool_input: { file_path: "a.ts" } }],
-    ["no command", { tool_input: {} }],
-    ["other event", { hook_event_name: "PreToolUse" }],
-  ] as const) {
-    const r = await decide(request(over), gate);
-    if (Object.keys(r.response).length !== 0 || !r.skipped) throw new Error(`${label} 不该插手: ${JSON.stringify(r)}`);
-  }
-  const watched = await decide(request(), gate, { observe: true });
-  if (Object.keys(watched.response).length !== 0 || watched.verdict?.action !== "allow") {
-    throw new Error(`旁观模式应当判了不放: ${JSON.stringify(watched)}`);
-  }
-});
+await checkAsync(
+  "钩子：auto 等其他模式、非 Bash、没有命令，一律不插手；旁观模式从不放行",
+  async () => {
+    const gate = createRiskGate({ backend: fakeJudge(0.01) });
+    for (const [label, over] of [
+      ["auto", { permission_mode: "auto" }],
+      ["plan", { permission_mode: "plan" }],
+      ["Write", { tool_name: "Write", tool_input: { file_path: "a.ts" } }],
+      ["no command", { tool_input: {} }],
+      ["other event", { hook_event_name: "PreToolUse" }],
+    ] as const) {
+      const r = await decide(request(over), gate);
+      if (Object.keys(r.response).length !== 0 || !r.skipped)
+        throw new Error(`${label} 不该插手: ${JSON.stringify(r)}`);
+    }
+    const watched = await decide(request(), gate, { observe: true });
+    if (Object.keys(watched.response).length !== 0 || watched.verdict?.action !== "allow") {
+      throw new Error(`旁观模式应当判了不放: ${JSON.stringify(watched)}`);
+    }
+  },
+);
 
 await checkAsync("钩子：判断器只看到命令本身，看不到 agent 自己写的说明", async () => {
   const seen: JudgeState[] = [];

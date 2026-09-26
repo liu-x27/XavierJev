@@ -9,6 +9,7 @@ import type {
   JudgeState,
   NoulAnswer,
   NoulQuestion,
+  OrderOptions,
   RubricBackend,
   RubricLevel,
   RubricResult,
@@ -114,7 +115,9 @@ const CHOICE_LABELS = "ABCDEFGH";
 
 /** "A, B or C" */
 function listLabels(labels: string[]): string {
-  return labels.length <= 2 ? labels.join(" or ") : `${labels.slice(0, -1).join(", ")} or ${labels.at(-1)}`;
+  return labels.length <= 2
+    ? labels.join(" or ")
+    : `${labels.slice(0, -1).join(", ")} or ${labels.at(-1)}`;
 }
 
 export class LlmJudge implements JudgeBackend, ChoiceBackend, RubricBackend {
@@ -154,7 +157,10 @@ export class LlmJudge implements JudgeBackend, ChoiceBackend, RubricBackend {
     // One call per question: each answer is a single token, so they cannot
     // share a completion, and they have no reason to wait for each other.
     return Promise.all(
-      questions.map(async (question) => ({ id: question.id, ...(await this.askOne(rendered, question.ask)) })),
+      questions.map(async (question) => ({
+        id: question.id,
+        ...(await this.askOne(rendered, question.ask)),
+      })),
     );
   }
 
@@ -176,7 +182,40 @@ export class LlmJudge implements JudgeBackend, ChoiceBackend, RubricBackend {
    * not a distribution, so an endpoint without logprobs throws here even when
    * `allowHardLabels` is on.
    */
-  async choice(state: JudgeState, ask: string, options: ChoiceOption[]): Promise<ChoiceResult> {
+  async choice(
+    state: JudgeState,
+    ask: string,
+    options: ChoiceOption[],
+    opts: OrderOptions = {},
+  ): Promise<ChoiceResult> {
+    if (opts.orders !== "all")
+      return { ...(await this.chooseOnce(state, ask, options)), orders: 1 };
+    if (options.length < 2 || options.length > CHOICE_LABELS.length) {
+      throw new Error(`choice() takes 2 to ${CHOICE_LABELS.length} options, got ${options.length}`);
+    }
+    // Each rotation puts every option at a different position; averaged over all of them, a
+    // lean towards a position or a label adds the same to every option.
+    const rotations = options.map((_, k) => [...options.slice(k), ...options.slice(0, k)]);
+    const results = await Promise.all(rotations.map((r) => this.chooseOnce(state, ask, r)));
+    return {
+      answers: options.map((o) => ({
+        id: o.id,
+        probability:
+          results.reduce(
+            (a, r) => a + (r.answers.find((x) => x.id === o.id)?.probability ?? 0),
+            0,
+          ) / results.length,
+      })),
+      coverage: Math.min(...results.map((r) => r.coverage)),
+      orders: results.length,
+    };
+  }
+
+  private async chooseOnce(
+    state: JudgeState,
+    ask: string,
+    options: ChoiceOption[],
+  ): Promise<Omit<ChoiceResult, "orders">> {
     if (options.length < 2 || options.length > CHOICE_LABELS.length) {
       throw new Error(`choice() takes 2 to ${CHOICE_LABELS.length} options, got ${options.length}`);
     }
@@ -190,7 +229,10 @@ export class LlmJudge implements JudgeBackend, ChoiceBackend, RubricBackend {
           role: "system",
           content: `You choose one option. Reply with exactly one letter: ${said}. No punctuation, no explanation, no other text.`,
         },
-        { role: "user", content: `${renderState(state)}\n\nQuestion: ${ask}\n${listed}\nAnswer (${said}):` },
+        {
+          role: "user",
+          content: `${renderState(state)}\n\nQuestion: ${ask}\n${listed}\nAnswer (${said}):`,
+        },
       ],
       // Room for every label plus the tokens a model reaches for instead.
       Math.min(20, Math.max(this.topLogprobs, options.length + 4)),
@@ -199,7 +241,9 @@ export class LlmJudge implements JudgeBackend, ChoiceBackend, RubricBackend {
     const top = completion.choices[0]?.logprobs?.content?.[0]?.top_logprobs;
     if (!top || top.length === 0) {
       this.noteDegraded();
-      throw new Error(`${this.model} returned no logprobs, so there is no distribution over the options`);
+      throw new Error(
+        `${this.model} returned no logprobs, so there is no distribution over the options`,
+      );
     }
 
     const mass = labels.map(() => 0);
@@ -209,7 +253,9 @@ export class LlmJudge implements JudgeBackend, ChoiceBackend, RubricBackend {
     }
     const coverage = mass.reduce((a, b) => a + b, 0);
     if (coverage <= 0) {
-      throw new Error(`no option label in the top logprobs (first token ${JSON.stringify(top[0]?.token)})`);
+      throw new Error(
+        `no option label in the top logprobs (first token ${JSON.stringify(top[0]?.token)})`,
+      );
     }
     return {
       answers: options.map((o, i) => ({ id: o.id, probability: mass[i]! / coverage })),
@@ -226,7 +272,43 @@ export class LlmJudge implements JudgeBackend, ChoiceBackend, RubricBackend {
    * mean and its spread — a model torn between 1 and 5 has a mean of 3 and a
    * spread that says not to believe it.
    */
-  async rubric(state: JudgeState, ask: string, levels: RubricLevel[]): Promise<RubricResult> {
+  async rubric(
+    state: JudgeState,
+    ask: string,
+    levels: RubricLevel[],
+    opts: OrderOptions = {},
+  ): Promise<RubricResult> {
+    if (opts.orders !== "all") return { ...(await this.rateOnce(state, ask, levels)), orders: 1 };
+    const both = await Promise.all([
+      this.rateOnce(state, ask, levels),
+      this.rateOnce(state, ask, [...levels].reverse()),
+    ]);
+    const distribution = levels.map((l) => ({
+      score: l.score,
+      probability:
+        both.reduce(
+          (a, r) => a + (r.distribution.find((d) => d.score === l.score)?.probability ?? 0),
+          0,
+        ) / 2,
+    }));
+    const expected = distribution.reduce((a, d) => a + d.score * d.probability, 0);
+    const spread = Math.sqrt(
+      distribution.reduce((a, d) => a + d.probability * (d.score - expected) ** 2, 0),
+    );
+    return {
+      distribution,
+      expected,
+      spread,
+      coverage: Math.min(both[0].coverage, both[1].coverage),
+      orders: 2,
+    };
+  }
+
+  private async rateOnce(
+    state: JudgeState,
+    ask: string,
+    levels: RubricLevel[],
+  ): Promise<Omit<RubricResult, "orders">> {
     if (levels.length < 2 || levels.length > 9) {
       throw new Error(`rubric() takes 2 to 9 levels, got ${levels.length}`);
     }
@@ -240,7 +322,10 @@ export class LlmJudge implements JudgeBackend, ChoiceBackend, RubricBackend {
           role: "system",
           content: `You rate on a scale. Reply with exactly one digit from ${said}. No punctuation, no explanation, no other text.`,
         },
-        { role: "user", content: `${renderState(state)}\n\nQuestion: ${ask}\n${listed}\nAnswer (${said}):` },
+        {
+          role: "user",
+          content: `${renderState(state)}\n\nQuestion: ${ask}\n${listed}\nAnswer (${said}):`,
+        },
       ],
       Math.min(20, Math.max(this.topLogprobs, levels.length + 4)),
     );
@@ -248,7 +333,9 @@ export class LlmJudge implements JudgeBackend, ChoiceBackend, RubricBackend {
     const top = completion.choices[0]?.logprobs?.content?.[0]?.top_logprobs;
     if (!top || top.length === 0) {
       this.noteDegraded();
-      throw new Error(`${this.model} returned no logprobs, so there is no distribution over the rubric`);
+      throw new Error(
+        `${this.model} returned no logprobs, so there is no distribution over the rubric`,
+      );
     }
     const mass = levels.map(() => 0);
     for (const entry of top) {
@@ -257,15 +344,25 @@ export class LlmJudge implements JudgeBackend, ChoiceBackend, RubricBackend {
     }
     const coverage = mass.reduce((a, b) => a + b, 0);
     if (coverage <= 0) {
-      throw new Error(`no rubric level in the top logprobs (first token ${JSON.stringify(top[0]?.token)})`);
+      throw new Error(
+        `no rubric level in the top logprobs (first token ${JSON.stringify(top[0]?.token)})`,
+      );
     }
-    const distribution = levels.map((l, i) => ({ score: l.score, probability: mass[i]! / coverage }));
+    const distribution = levels.map((l, i) => ({
+      score: l.score,
+      probability: mass[i]! / coverage,
+    }));
     const expected = distribution.reduce((a, d) => a + d.score * d.probability, 0);
-    const spread = Math.sqrt(distribution.reduce((a, d) => a + d.probability * (d.score - expected) ** 2, 0));
+    const spread = Math.sqrt(
+      distribution.reduce((a, d) => a + d.probability * (d.score - expected) ** 2, 0),
+    );
     return { distribution, expected, spread, coverage: Math.min(1, coverage) };
   }
 
-  private async askOne(state: string, ask: string): Promise<{ probability: number; coverage?: number }> {
+  private async askOne(
+    state: string,
+    ask: string,
+  ): Promise<{ probability: number; coverage?: number }> {
     const messages = yesNoMessages(state, ask, this.yesNoOrder);
 
     const completion = await this.complete(messages);
@@ -333,14 +430,27 @@ export class LlmJudge implements JudgeBackend, ChoiceBackend, RubricBackend {
     if (!origin) return { model, detail: "no base URL: a hosted API reports no digest" };
     try {
       const res = await fetch(`${origin}/api/tags`, { signal: AbortSignal.timeout(5000) });
-      if (!res.ok) return { model, detail: `${origin}/api/tags answered ${res.status}, so not an Ollama: no digest` };
-      const body = (await res.json()) as { models?: Array<{ name?: string; model?: string; digest?: string }> };
+      if (!res.ok)
+        return {
+          model,
+          detail: `${origin}/api/tags answered ${res.status}, so not an Ollama: no digest`,
+        };
+      const body = (await res.json()) as {
+        models?: Array<{ name?: string; model?: string; digest?: string }>;
+      };
       const wanted = model.includes(":") ? model : `${model}:latest`;
       const entry = body.models?.find((m) => m.name === wanted || m.model === wanted);
       if (!entry?.digest) return { model, detail: `Ollama at ${origin} does not list ${wanted}` };
-      return { model, digest: entry.digest, detail: `Ollama manifest ${entry.digest.slice(0, 12)}` };
+      return {
+        model,
+        digest: entry.digest,
+        detail: `Ollama manifest ${entry.digest.slice(0, 12)}`,
+      };
     } catch (err) {
-      return { model, detail: `no digest from ${origin}: ${err instanceof Error ? err.message : String(err)}` };
+      return {
+        model,
+        detail: `no digest from ${origin}: ${err instanceof Error ? err.message : String(err)}`,
+      };
     }
   }
 
@@ -425,7 +535,10 @@ export class LlmJudge implements JudgeBackend, ChoiceBackend, RubricBackend {
  * beside it as `coverage`, as `choice()` does, so a caller can tell a model
  * that answered from one that wanted to say something else.
  */
-function probabilityFromLogprobs(top: readonly { token: string; logprob: number }[]): { probability: number; coverage: number } {
+function probabilityFromLogprobs(top: readonly { token: string; logprob: number }[]): {
+  probability: number;
+  coverage: number;
+} {
   let yes = 0;
   let no = 0;
 

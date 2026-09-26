@@ -116,8 +116,8 @@ caller's job to keep it to the few facts the question is about.
 
 ```ts
 noul(state, questions): Promise<{ id; probability; coverage? }[]>              // yes or no
-choice(state, ask, options): Promise<{ answers; coverage }>                   // one of 2–8
-rubric(state, ask, levels): Promise<{ distribution; expected; spread; coverage }>  // 2–9 levels
+choice(state, ask, options, { orders? }): Promise<{ answers; coverage; orders }>  // one of 2–8
+rubric(state, ask, levels, { orders? }): Promise<{ distribution; expected; spread; coverage; orders }>  // 2–9 levels
 ```
 
 Each answer is one token. Asked for `{"confidence": 0.9}`, a model writes whichever number
@@ -127,7 +127,7 @@ so the whole distribution comes out of one forward pass, and `coverage` says how
 that token's probability landed on the labels at all — a model that wanted to start a
 sentence instead should be visible as that, not as a confident renormalisation of what
 was left. Where the options sit moves the answer, though: llama3.1:8b picks the first of
-`choice()`'s options about twice as often as no preference would ([On JevBench](#on-jevbench)). `noul()` reports it too, as the share of the token on a yes or a no, and an
+`choice()`'s options about twice as often as no preference would ([On JevBench](#on-jevbench)); `{ orders: "all" }` asks once per rotation of the options (low to high and back for `rubric()`) and averages each option's probability, which cancels that lean at n calls' cost. `noul()` reports it too, as the share of the token on a yes or a no, and an
 answer with less than 95% of it (`MIN_COVERAGE`, a half before 0.2.0) counts as a judge failure in all four decisions
 below. llama3.1:8b has put all of it on Y or N on every call measured.
 

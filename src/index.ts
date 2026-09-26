@@ -51,6 +51,7 @@ export {
   type JudgeBackend,
   type JudgeIdentity,
   type RubricBackend,
+  type OrderOptions,
   type RubricLevel,
   type RubricResult,
   type JudgeState,

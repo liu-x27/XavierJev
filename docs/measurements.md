@@ -735,8 +735,9 @@ router, the retry and the stop are all `noul()` — so nothing shipped moves. Fo
 the average buys little, 74.3% against 73.0% here, and on the gate's dev set it ranked no
 better. For a caller of `choice()` it is another matter: on half of these tasks the answer
 depended on where the options happened to sit, and paying for every rotation was the
-difference between 54% and 66%. The primitive does not offer that yet; a caller can do it by
-asking once per rotation and averaging by label.
+difference between 54% and 66%. Since 0.6.0 the primitive does it when asked:
+`choice(state, ask, options, { orders: "all" })` asks once per rotation and averages by option,
+and `rubric(…, { orders: "all" })` asks low to high and high to low. The default stays one call.
 
 ---
 

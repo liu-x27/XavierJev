@@ -128,6 +128,23 @@ export interface ChoiceOption {
   text: string;
 }
 
+/**
+ * Which orders to list a question's options in.
+ *
+ * A model's answer depends on where an option sits: llama3.1:8b picks the first of `choice()`'s
+ * options 48% of the time where no preference would give 22% (docs/measurements.md, "The order
+ * the options are listed in").
+ */
+export interface OrderOptions {
+  /**
+   * `"as-given"`, the default: one call, the options in the order passed.
+   * `"all"`: every option at every position once — each cyclic rotation for `choice()`, low to
+   * high and high to low for `rubric()` — and each option's probability averaged over them. It
+   * costs one call per order, n for `choice()` and two for `rubric()`.
+   */
+  orders?: "as-given" | "all";
+}
+
 export interface ChoiceResult {
   /** P(option), one per option in the order given, summing to 1. */
   answers: NoulAnswer[];
@@ -135,9 +152,12 @@ export interface ChoiceResult {
    * How much of the model's first-token probability landed on the option
    * labels at all, before renormalising over them. Near 1 means the model
    * answered the question it was asked; low means it wanted to say something
-   * else, and the renormalised answers are a guess about a guess.
+   * else, and the renormalised answers are a guess about a guess. Over several orders, the
+   * lowest of them.
    */
   coverage: number;
+  /** How many orders the answers were averaged over: 1 unless `orders: "all"` was asked for. */
+  orders: number;
 }
 
 export interface ChoiceBackend {
@@ -151,7 +171,12 @@ export interface ChoiceBackend {
    * list runs before the judge: the model's job is to choose among legal
    * options, not to rediscover which ones are legal.
    */
-  choice(state: JudgeState, ask: string, options: ChoiceOption[]): Promise<ChoiceResult>;
+  choice(
+    state: JudgeState,
+    ask: string,
+    options: ChoiceOption[],
+    opts?: OrderOptions,
+  ): Promise<ChoiceResult>;
 }
 
 /** One point on a rubric: a score and what it means. */
@@ -167,8 +192,10 @@ export interface RubricResult {
   expected: number;
   /** Its standard deviation: how sure the judge is of the score, in score units. */
   spread: number;
-  /** How much of the first token's probability landed on a level at all. */
+  /** How much of the first token's probability landed on a level at all; over several orders, the lowest. */
   coverage: number;
+  /** How many orders the distribution was averaged over: 1, or 2 with `orders: "all"`. */
+  orders: number;
 }
 
 export interface RubricBackend {
@@ -182,5 +209,10 @@ export interface RubricBackend {
    * caller can tell "a confident 3" from "a 1 or a 5, and the model cannot
    * decide" — the same mean, and not the same answer.
    */
-  rubric(state: JudgeState, ask: string, levels: RubricLevel[]): Promise<RubricResult>;
+  rubric(
+    state: JudgeState,
+    ask: string,
+    levels: RubricLevel[],
+    opts?: OrderOptions,
+  ): Promise<RubricResult>;
 }
