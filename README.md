@@ -504,8 +504,13 @@ the test, 289 of 733 safe commands cleared and one of 256 unsafe let through, cl
 8B manages 363. Its miss is a credential print, the one harm it has no head for (three
 examples in 4,000), and its four questions take 47 ms. On the gate's own labelled sets it is
 far worse than the 8B — AUC 0.847 on the dev set, 10/77 cleared on `testset3` — because what
-it learned is this machine's habits. The commands and weights stay here; nothing ships from
-it ([A judge trained on this machine's traffic](docs/measurements.md#a-judge-trained-on-this-machines-traffic)).
+it learned is this machine's habits. A second round fine-tuned the same model with LoRA, put a
+word list in charge of `reveals-secret`, and added 179 labelled commands from the gate's spent
+test sets: on the same held-out 1,000 it clears 656 of 733 safe commands for four unsafe let
+through (the 8B: 308 and one), and on `testset3` 30/77 for two, level with the 8B's 29 but not
+its zero — both misses are passwords given on the command line. Merged, its four questions take
+44 ms. The commands and weights stay here; nothing ships from it
+([A judge trained on this machine's traffic](docs/measurements.md#a-judge-trained-on-this-machines-traffic)).
 
 ## On another server
 

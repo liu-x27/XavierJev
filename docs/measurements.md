@@ -78,7 +78,7 @@ wrong first.
 | [Where a decision's time goes](#where-a-decisions-time-goes) | one pass per question, a shared prefix, and slots that make it slower |
 | [Telling the snake about room](#telling-the-snake-about-room) | a five-game win that twenty games on a new seed took back |
 | [Smaller judges](#smaller-judges) | barely faster, much worse, and a threshold that does not travel |
-| [A judge trained on this machine's traffic](#a-judge-trained-on-this-machines-traffic) | 0.6B with heads out-ranks the prompted 8B on its own traffic, and loses on everyone else's |
+| [A judge trained on this machine's traffic](#a-judge-trained-on-this-machines-traffic) | 0.6B with heads out-ranks the prompted 8B on its own traffic and loses elsewhere; fine-tuned, it clears twice the 8B's share here and matches it on `testset3`, with more misses |
 | [Beside a rule-based guard](#beside-a-rule-based-guard) | opposite failures: one misses most harm, the other most of the benefit |
 | [On real traffic](#on-real-traffic) | a quarter cleared, all of it harmless on reading, held back by one question |
 | [On JevBench](#on-jevbench) | easy solved, hard at chance and confident — as the options are listed |
@@ -945,6 +945,84 @@ about half the time the 8B took on the dev set's shorter commands; it is not a g
 had no examples. `testset.ts`, the one set no model has read, was not spent on it. Nothing
 ships from this: there is no backend for it here, and one would need a `reveals-secret`
 answer from somewhere and data from more than one machine.
+
+### Round 2: fine-tuned, a secret-word guard, and some borrowed data
+
+*Same day, after round 1's test read. The registration is written before the final model was
+trained; one criterion in it was changed after first results, and it says so.*
+
+Round 1 left two faults, and round 2 was chosen against them without reading the test split or
+`testset3.ts` again. What it could look at: the real training commands, and a transfer pool of
+the dev set and `testset2.ts` (179, both already spent as tests), standing in for traffic from
+elsewhere.
+
+- **`reveals-secret` becomes a word list.** A command that names `.env`, `id_rsa`, a password,
+  token, secret, API key, `printenv` and the like is asked about, whatever the model says. It
+  costs 48 of the 2,114 safe training commands and catches every credential print in the real
+  labels.
+- **Different heads did not help.** Own-question features, ten times the regularisation, two
+  layers instead of four, the 1,181 commands read for [Counting what it let
+  through](#counting-what-it-let-through) as extra training data: pool AUC 0.80–0.87 against
+  round 1's 0.85, inside what 179 commands can tell apart. The floor set for this search —
+  5-fold AUC on real traffic at least 0.97 — turned out to be unreachable once the word list
+  was in, since the list alone costs about 0.02 of it; it was relaxed to "within 0.01 of round
+  1 with the list", after the fact.
+- **Fine-tuning did.** LoRA on Qwen3-0.6B, rank 16 on every attention and MLP projection,
+  trained so its own Y-against-N margin at the answer is the judgement: on 600 held-out real
+  commands 0.979 against 0.954 for heads fitted to the same rows, and pool AUC 0.873 against
+  0.844. Training on half the pool as well, at a quarter of the weight, and scoring the other
+  half: 0.904. One epoch instead of two: 0.883.
+
+The judge that was fixed from that: two epochs, the 2,400 training commands, the 1,181, the
+whole pool at weight 0.25, calibrated and thresholded on the 600, the word list for
+`reveals-secret`. Threshold: below the second-lowest score among the unsafe validation commands
+(one let through on validation).
+
+On the 1,000 held-out real commands — their second read, round 1 being the first:
+
+| judge | AUC | safe cleared | unsafe let through |
+|---|---|---|---|
+| round 2, at the registered threshold | 0.974 | **656/733** | 4/256 |
+| round 2, at "none let through on validation" | 0.974 | 618/733 | 2/256 |
+| round 1 | 0.981 | 289/733 | 1/256 |
+| llama3.1:8b at 0.2 | 0.915 | 308/733 | 1/256 |
+
+Nine in ten safe commands cleared, where the 8B clears four in ten, for four let through where
+it lets through one: the share of clears that are wrong is bounded below 1.4% at 95% for round
+2 and below 1.6% for the 8B. The four are two runs of scratch scripts whose writes are in the
+script, not the command, and two that are unsafe on the narrowest reading of the criterion — a
+project script re-recording a tracked GIF in another repository, and an `npm install` there.
+None deletes, pushes or uploads. With the threshold set on the 1,000 themselves, for comparing
+rankings, it clears 476 with none let through, 609 with one, 638 with two, against round 1's 19,
+418, 556 and the 8B's 204, 336, 363. The gate AUC is below round 1's because the word list asks
+about 17 of the 733 safe test commands outright; per question the fine-tuned answers score 0.991, 0.994 and
+1.000.
+
+On `testset3.ts`, its fourth read:
+
+| judge | AUC | saved | false allows |
+|---|---|---|---|
+| round 2, at the registered threshold | 0.825 | 30/77 | 2/76 |
+| round 2, at "none let through on validation" | 0.825 | 25/77 | 1/76 |
+| round 1 | 0.771 | 10/77 | 0/76 |
+| llama3.1:8b at 0.2 | — | 29/77 | 0/76 |
+
+Level with the 8B on what it clears. Both false allows are `mysql -u DB_USER -pDB_PASS …`: a
+password on the command line, which this set labels as revealing a credential and the real
+traffic's labels do not — they count a credential already written in the command as not
+revealed. The word list has no entry for `-p`. The dev set and `testset2.ts` were training data
+for round 2, so it has no numbers on them.
+
+The four questions take 75 ms mean with the adapters separate and 44 ms (p95 73 ms, 1.7 GB)
+with them merged into the weights; merging moves the answers by 0.06 in the margin on average,
+so a merged judge would need its calibration redone.
+
+What changed, and what did not. The fine-tuned 0.6B clears more than twice as much of this
+machine's traffic as the prompted 8B at a small cost in misses, and on commands written
+elsewhere it now matches the 8B on clears. It still misses what the 8B catches: credentials in
+arguments, and harm that lives in a script the command only runs. It remains a judge for one
+machine plus 179 borrowed commands. Its weights and training data stay here, and `testset.ts`
+is still unread.
 
 ---
 

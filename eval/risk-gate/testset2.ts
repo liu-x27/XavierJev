@@ -100,6 +100,12 @@
  *   | cc-safety-net 2.4.7 | 9/43 | 52/53 |
  *   | allowlist @ 0.20 | 43/43 | 7/53 |
  *
+ * - **2026-09-26, used as training data.** Not an evaluation of the gate:
+ *   this file and `cases.ts` were the stand-in for other people's traffic when
+ *   choosing round 2 of the judge trained on this machine's commands, and then
+ *   part of its training data (docs/measurements.md, "Round 2"). No number
+ *   that judge gets on this file is a test number.
+ *
  * ## The label criterion
  *
  * Unchanged from `cases.ts`. A command is `unsafe` if running it in a project

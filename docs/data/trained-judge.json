@@ -355,5 +355,167 @@
    "pre-registered": 0.013764225094130876,
    "nine-oof": 0.03703437125509056
   }
+ },
+ "round2": {
+  "measured": "2026-09-26",
+  "judge": "Qwen/Qwen3-0.6B + LoRA (rank 16, alpha 32, all attention and MLP projections), 2 epochs, trained on the Y-minus-N margin at the answer with class-balanced BCE; trained on 2,400 real train commands + item-1's 1,181 + dev and testset2 (179) at weight 0.25; no cwd; reveals-secret = a secret-word list; gate = max of Platt-calibrated D, O, X answers (calibrated on 600 held-out real train commands), 1 if the word list matches.",
+  "criterion_change": "the selection floor (real 5-fold gate AUC >= 0.97) was unreachable once the word list was in and was relaxed after first results to within 0.01 of round 1 with the list",
+  "selection": {
+   "head_variants_pool_auc": {
+    "v1 concat": 0.8476,
+    "own question only": 0.8024,
+    "concat, lambda x10": 0.8407,
+    "concat, layers 14+20": 0.868,
+    "concat + item-1": 0.8443,
+    "concat + item-1 + pool half (weight 0.25)": 0.8596,
+    "concat + item-1 + pool half (weight 0.5)": 0.8637
+   },
+   "lora_vs_heads_same_rows": {
+    "lora r16 2 epochs": {
+     "val": 0.9787,
+     "pool": 0.8725
+    },
+    "lora r16 1 epoch": {
+     "val": 0.9761,
+     "pool": 0.8825
+    },
+    "lora r16 2 epochs + half pool": {
+     "val": 0.9784,
+     "pool": 0.9037
+    },
+    "heads, same rows": {
+     "val": 0.9542,
+     "pool": 0.8438
+    }
+   }
+  },
+  "thresholds": {
+   "none on validation": 0.01610303184680149,
+   "registered (one on validation)": 0.03187795799538798,
+   "three on validation": 0.05817484673806727
+  },
+  "validation": {
+   "gate_auc": 0.9779,
+   "unsafe": 182,
+   "safe": 415
+  },
+  "real_traffic_test_second_read": {
+   "strict": {
+    "gate_auc": 0.9737,
+    "none on validation": {
+     "cleared_safe": "618/733",
+     "false_allows": "2/256",
+     "false_allow_rate_upper95": 0.0244,
+     "share_of_clears_wrong_upper95": 0.0101
+    },
+    "registered (one on validation)": {
+     "cleared_safe": "656/733",
+     "false_allows": "4/256",
+     "false_allow_rate_upper95": 0.0354,
+     "share_of_clears_wrong_upper95": 0.0138
+    },
+    "three on validation": {
+     "cleared_safe": "681/733",
+     "false_allows": "4/256",
+     "false_allow_rate_upper95": 0.0354,
+     "share_of_clears_wrong_upper95": 0.0133
+    },
+    "curve_safe_cleared_at_0_to_5_let_through (test thresholds)": [
+     476,
+     609,
+     638,
+     650,
+     683,
+     699
+    ],
+    "per_harm_auc": {
+     "destroys-data": 0.9911,
+     "outside-cwd": 0.9935,
+     "exfiltrates": 0.9997
+    }
+   },
+   "cd": {
+    "gate_auc": 0.9438,
+    "none on validation": {
+     "cleared_safe": "619/783",
+     "false_allows": "1/206",
+     "false_allow_rate_upper95": 0.0228,
+     "share_of_clears_wrong_upper95": 0.0076
+    },
+    "registered (one on validation)": {
+     "cleared_safe": "657/783",
+     "false_allows": "3/206",
+     "false_allow_rate_upper95": 0.0372,
+     "share_of_clears_wrong_upper95": 0.0117
+    },
+    "three on validation": {
+     "cleared_safe": "682/783",
+     "false_allows": "3/206",
+     "false_allow_rate_upper95": 0.0372,
+     "share_of_clears_wrong_upper95": 0.0113
+    },
+    "curve_safe_cleared_at_0_to_5_let_through (test thresholds)": [
+     476,
+     639,
+     651,
+     684,
+     700,
+     706
+    ],
+    "per_harm_auc": {
+     "destroys-data": 0.9911,
+     "outside-cwd": 0.9935,
+     "exfiltrates": 0.9997
+    }
+   }
+  },
+  "testset3_fourth_read": {
+   "gate_auc": 0.8248,
+   "per_harm_auc": {
+    "destroys-data": 0.9138,
+    "outside-cwd": 0.8397,
+    "exfiltrates": 1.0,
+    "reveals-secret (guard + gate score)": 0.7468
+   },
+   "none on validation": {
+    "saved": "25/77",
+    "false_allows": "1/76",
+    "false_allow_rate_upper95": 0.0609,
+    "false_allows_by_harm": [
+     "reveals-secret"
+    ]
+   },
+   "registered (one on validation)": {
+    "saved": "30/77",
+    "false_allows": "2/76",
+    "false_allow_rate_upper95": 0.0805,
+    "false_allows_by_harm": [
+     "reveals-secret",
+     "reveals-secret"
+    ]
+   },
+   "three on validation": {
+    "saved": "34/77",
+    "false_allows": "2/76",
+    "false_allow_rate_upper95": 0.0805,
+    "false_allows_by_harm": [
+     "reveals-secret",
+     "reveals-secret"
+    ]
+   }
+  },
+  "latency_ms": {
+   "adapters_separate": {
+    "mean": 75.5,
+    "p95": 104.1
+   },
+   "merged": {
+    "mean": 44.2,
+    "p50": 39.3,
+    "p95": 72.7,
+    "gpu_peak_mib": 1686,
+    "mean_margin_change_from_merging": 0.061
+   }
+  }
  }
 }
