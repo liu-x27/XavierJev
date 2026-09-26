@@ -35,7 +35,7 @@ import {
   step,
 } from "../games/snake.js";
 import { AllowlistJudge } from "../src/allowlist.js";
-import { checkGate, createRiskGate, GATE_CANARIES, RISK_QUESTIONS } from "../src/gate.js";
+import { checkGate, createRiskGate, GATE_CANARIES, GATE_RECORDED_ON, RISK_QUESTIONS } from "../src/gate.js";
 import { LlmJudge } from "../src/llm.js";
 import { createRetryJudge, patternRetryJudge } from "../src/retry.js";
 import { createModelRouter } from "../src/router.js";
@@ -825,6 +825,49 @@ await checkAsync("自检：放行了一条必须拦的命令就判不安全；�
     }),
   );
   if (down.asMeasured || down.unsafe || down.shift !== undefined) throw new Error(`挂了: ${JSON.stringify(down.problems)}`);
+});
+
+await checkAsync("自检：后端报出的模型摘要和录制时一致才算原样；不一致只算走样；自定义金丝雀不比摘要", async () => {
+  const withDigest = (digest: string): JudgeBackend => ({
+    ...recordedJudge(0),
+    identify: async () => ({ model: "llama3.1:8b", digest, detail: "test" }),
+  });
+  const same = await checkGate(createRiskGate({ backend: withDigest(GATE_RECORDED_ON.digest) }));
+  if (!same.asMeasured || same.identity?.digest !== GATE_RECORDED_ON.digest) throw new Error(`摘要一致: ${JSON.stringify(same.problems)}`);
+  const other = await checkGate(createRiskGate({ backend: withDigest("0".repeat(64)) }));
+  if (other.asMeasured || other.unsafe || !other.problems.some((p) => p.includes("not the llama3.1:8b"))) {
+    throw new Error(`摘要不一致应当只算走样: ${JSON.stringify(other.problems)}`);
+  }
+  const custom = await checkGate(createRiskGate({ backend: withDigest("0".repeat(64)) }), GATE_CANARIES.slice(0, 3));
+  if (!custom.asMeasured) throw new Error(`自定义金丝雀不该比摘要: ${JSON.stringify(custom.problems)}`);
+});
+
+await checkAsync("LlmJudge.identify：从 Ollama 的 /api/tags 读清单摘要；不是 Ollama 就不给摘要", async () => {
+  const digest = "ab".repeat(32);
+  const server = http.createServer((req, res) => {
+    if (req.url === "/api/tags") {
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({ models: [{ name: "llama3.1:8b", model: "llama3.1:8b", digest }] }));
+    } else {
+      res.statusCode = 404;
+      res.end();
+    }
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const { port } = server.address() as { port: number };
+  try {
+    const found = await new LlmJudge({ apiKey: "t", baseURL: `http://127.0.0.1:${port}/v1`, model: "llama3.1:8b" }).identify();
+    if (found.digest !== digest) throw new Error(`应读到摘要: ${JSON.stringify(found)}`);
+    const missing = await new LlmJudge({ apiKey: "t", baseURL: `http://127.0.0.1:${port}/v1`, model: "qwen2.5:3b" }).identify();
+    if (missing.digest !== undefined) throw new Error(`没列出的模型不该有摘要: ${JSON.stringify(missing)}`);
+    const hosted = await new LlmJudge({ apiKey: "t", model: "gpt-4o-mini" }).identify();
+    if (hosted.digest !== undefined) throw new Error("托管 API 不该有摘要");
+  } finally {
+    await new Promise<void>((r) => {
+      server.close(() => r());
+      server.closeAllConnections();
+    });
+  }
 });
 
 await checkAsync("自检：白名单后端也按记录通过", async () => {

@@ -5,6 +5,7 @@ import type {
   ChoiceOption,
   ChoiceResult,
   JudgeBackend,
+  JudgeIdentity,
   JudgeState,
   NoulAnswer,
   NoulQuestion,
@@ -120,6 +121,7 @@ export class LlmJudge implements JudgeBackend, ChoiceBackend, RubricBackend {
   readonly name: string;
 
   private readonly client: OpenAI;
+  private readonly baseURL: string | undefined;
   private readonly model: string;
   private readonly topLogprobs: number;
   private readonly allowHardLabels: boolean;
@@ -143,6 +145,7 @@ export class LlmJudge implements JudgeBackend, ChoiceBackend, RubricBackend {
     this.yesNoOrder = options.yesNoOrder ?? "yes-first";
     this.yesNo = YES_NO_PROMPTS[this.yesNoOrder];
     this.name = `llm:${this.model}`;
+    this.baseURL = baseURL;
     this.client = new OpenAI({ apiKey, ...(baseURL ? { baseURL } : {}) });
   }
 
@@ -316,6 +319,31 @@ export class LlmJudge implements JudgeBackend, ChoiceBackend, RubricBackend {
    * numbers that made it worth having. Third-party OpenAI-compatible
    * endpoints do this routinely.
    */
+  /**
+   * Which model serves this judge's name, by digest, when the endpoint says.
+   *
+   * Only Ollama does, through its own `/api/tags`: its manifest digest covers
+   * the weights, the chat template and the parameters, which is what a
+   * threshold depends on. Anything else — a hosted API, llama.cpp's server —
+   * gets a name and no digest, and a reason.
+   */
+  async identify(): Promise<JudgeIdentity> {
+    const model = this.model;
+    const origin = this.baseURL?.replace(/\/v1\/?$/, "").replace(/\/$/, "");
+    if (!origin) return { model, detail: "no base URL: a hosted API reports no digest" };
+    try {
+      const res = await fetch(`${origin}/api/tags`, { signal: AbortSignal.timeout(5000) });
+      if (!res.ok) return { model, detail: `${origin}/api/tags answered ${res.status}, so not an Ollama: no digest` };
+      const body = (await res.json()) as { models?: Array<{ name?: string; model?: string; digest?: string }> };
+      const wanted = model.includes(":") ? model : `${model}:latest`;
+      const entry = body.models?.find((m) => m.name === wanted || m.model === wanted);
+      if (!entry?.digest) return { model, detail: `Ollama at ${origin} does not list ${wanted}` };
+      return { model, digest: entry.digest, detail: `Ollama manifest ${entry.digest.slice(0, 12)}` };
+    } catch (err) {
+      return { model, detail: `no digest from ${origin}: ${err instanceof Error ? err.message : String(err)}` };
+    }
+  }
+
   async probe(): Promise<JudgeCapability> {
     const control = "Is 2 + 2 equal to 4?";
     let completion: OpenAI.Chat.ChatCompletion;

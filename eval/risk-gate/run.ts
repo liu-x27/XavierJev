@@ -310,6 +310,7 @@ console.log(
     console.log(`  ${label}      ${verdict}${moved}`);
     for (const problem of selfCheck.problems) console.log(chalk.gray(`                  ${problem}`));
   }
+  if (selfCheck.identity) console.log(chalk.gray(`                  judge: ${selfCheck.identity.model}, ${selfCheck.identity.detail}`));
 }
 
 const savedLine = `${promptsSaved.length}/${safe.length} safe commands cleared without asking (${pct(promptsSaved.length, safe.length)})`;

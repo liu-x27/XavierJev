@@ -36,7 +36,7 @@ tries is a bound of 3.9%, not a rate of zero.
 
 ```bash
 npm install
-npm test                                        # 50 checks, mocked — no model, no key
+npm test                                        # 52 checks, mocked — no model, no key
 npm run eval:risk-gate                          # the gate's dev set, offline: the allow-list is its default
 ```
 
@@ -65,7 +65,7 @@ As a library. It is not on npm; installing from GitHub builds it, and
 [mini-claude-code](https://github.com/liu-x27/mini-claude-code) takes it this way:
 
 ```sh
-npm install github:liu-x27/XavierJev#v0.4.0
+npm install github:liu-x27/XavierJev#v0.5.0
 ```
 
 ```ts
@@ -233,6 +233,13 @@ limit was a whole unit until 0.4.0. Then the same weights on llama.cpp's default
 moved the canaries 0.90 towards allowing, cleared a dev-set command the measured gate asks
 about, and passed ([On another server](#on-another-server)). Half a unit fails that, and
 still passes the +0.14 and +0.25 seen on configurations that build the measured prompt.
+
+Canaries catch a move after it happens, so before them the check asks the backend which
+model it is. Ollama answers with a manifest digest that covers the weights, the chat template
+and the parameters together. A digest other than the one the canaries were recorded on
+(`GATE_RECORDED_ON`: llama3.1:8b at `46e0c10c039e`, what a fresh pull gives on 2026-09-26) is
+not the gate that was measured, whatever its canaries say. Other endpoints report no digest,
+and for them the canaries are the whole check.
 
 The prompt is on that list because of what `npm run eval:order` found: the same four
 questions over the 83 dev commands, asked as shipped and then with N named before Y in the
@@ -663,7 +670,7 @@ yes/no did.
 
 ## Status
 
-The mock suite — `npm test`, 50 checks, no model — covers the logic that would otherwise
+The mock suite — `npm test`, 52 checks, no model — covers the logic that would otherwise
 fail quietly: the gate's answers returned in question order and decided on the worst; the
 four ways each of the gate and the router can fail (a backend that throws, times out,
 skips a question, or answers outside [0, 1]) landing on asking and on the strong model; the
@@ -675,7 +682,7 @@ or a no, refused by all four decisions; a command too long to show the judge who
 about without it, and a request too long to show the router, sent to the strong model; a
 threshold outside (0, 1), a negative timeout or a fractional count, refused when a decision is
 built, since each would otherwise turn it silently into always or never; the gate's self-check, in both directions of
-drift; the answer order reaching the prompt; the Claude Code hook's allow, silence and
+drift, and its model digest against the recorded one; the answer order reaching the prompt; the Claude Code hook's allow, silence and
 abstentions; and the bounds `eval/stats.ts` puts beside a count.
 
 The tables for the four decisions, the games, throughput and calibration were measured in
@@ -704,7 +711,7 @@ the third has been read once.
 ## Development
 
 ```bash
-npm test                  # 50 checks, mocked
+npm test                  # 52 checks, mocked
 npm run typecheck         # src, games, eval, test and arena
 npm run lint
 npm run build             # the library, to dist/

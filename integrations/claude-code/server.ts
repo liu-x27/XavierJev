@@ -98,5 +98,6 @@ app.listen(port, "127.0.0.1", () => {
   const moved = check.shift === undefined ? "" : `, scores ${check.shift >= 0 ? "+" : ""}${check.shift.toFixed(2)} in log-odds`;
   console.log(`   self-check: ${check.asMeasured ? "as measured" : "not the gate that was measured"}${moved}`);
   for (const problem of check.asMeasured ? [] : check.problems) console.log(`      ${problem}`);
+  if (check.identity) console.log(`   model: ${check.identity.detail}`);
   console.log(`   log: ${logPath}\n`);
 });

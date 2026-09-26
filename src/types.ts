@@ -87,6 +87,28 @@ export interface JudgeBackend {
    * "no" — see `createRiskGate`, which fails closed.
    */
   noul(state: JudgeState, questions: NoulQuestion[]): Promise<NoulAnswer[]>;
+
+  /**
+   * Which model is answering, as exactly as the endpoint can say. Optional:
+   * `checkGate` compares the digest with the one its canaries were recorded
+   * on, when there is one to compare.
+   */
+  identify?(): Promise<JudgeIdentity>;
+}
+
+/** What a backend can say about exactly which model answers its questions. */
+export interface JudgeIdentity {
+  /** The model name the backend asks for. */
+  model: string;
+  /**
+   * A digest of what serves that name, when the endpoint reports one. For
+   * Ollama this is the manifest digest, which covers the weights, the chat
+   * template and the parameters together, so a new template under the same
+   * name changes it.
+   */
+  digest?: string;
+  /** Where the digest came from, or why there is none. */
+  detail: string;
 }
 
 /**
