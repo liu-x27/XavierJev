@@ -40,6 +40,7 @@
     "eval:compare": "tsx eval/compare/run.ts",
     "eval:jevbench": "tsx eval/jevbench/run.ts",
     "eval:llama-cpp": "tsx eval/llama-cpp/run.ts",
+    "eval:option-order": "tsx eval/option-order/run.ts",
     "lint": "biome lint src/ games/ test/ integrations/",
     "format": "biome format --write src/ games/ test/ integrations/"
   },

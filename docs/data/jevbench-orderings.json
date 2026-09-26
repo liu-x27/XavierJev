@@ -1,0 +1,79 @@
+{
+ "measured": "2026-09-26",
+ "model": "llama3.1-8b-16k",
+ "scored_by": "eval/jevbench/score.py (JevBench's own scoring code)",
+ "as_listed": {
+  "easy": {
+   "n": 48,
+   "accuracy": 1.0,
+   "chance": 0.28437499999999977,
+   "above_chance": 100.0,
+   "ece": 0.006338215188227525,
+   "calibration_axis": 98.7323569623545,
+   "brier": 0.0002757443622190105
+  },
+  "original": {
+   "n": 72,
+   "accuracy": 0.7361111111111112,
+   "chance": 0.3111111111111113,
+   "above_chance": 61.693548387096776,
+   "ece": 0.16806450559889574,
+   "calibration_axis": 66.38709888022085,
+   "brier": 0.43105184761365917
+  },
+  "hard": {
+   "n": 111,
+   "accuracy": 0.36036036036036034,
+   "chance": 0.3361861861861862,
+   "above_chance": 3.6417100203573836,
+   "ece": 0.304567275422155,
+   "calibration_axis": 39.086544915569,
+   "brier": 0.8000306066529819
+  },
+  "weighted_above_chance": 44.953759103464336,
+  "all": {
+   "n": 231,
+   "accuracy": 0.6103896103896104,
+   "ece": 0.1748094706629898,
+   "calibration_axis": 65.03810586740204,
+   "brier": 0.5188414116712164
+  }
+ },
+ "averaged_over_orders": {
+  "easy": {
+   "n": 48,
+   "accuracy": 1.0,
+   "chance": 0.28437499999999977,
+   "above_chance": 100.0,
+   "ece": 0.012541232406792169,
+   "calibration_axis": 97.49175351864156,
+   "brier": 0.0009750706322385398
+  },
+  "original": {
+   "n": 72,
+   "accuracy": 0.7777777777777778,
+   "chance": 0.3111111111111113,
+   "above_chance": 67.74193548387096,
+   "ece": 0.10090328729742769,
+   "calibration_axis": 79.81934254051446,
+   "brier": 0.3800890710554603
+  },
+  "hard": {
+   "n": 111,
+   "accuracy": 0.5135135135135135,
+   "chance": 0.3361861861861862,
+   "above_chance": 26.713413254919697,
+   "ece": 0.11703783240863566,
+   "calibration_axis": 76.59243351827287,
+   "brier": 0.6254323688773987
+  },
+  "weighted_above_chance": 56.91911932216637,
+  "all": {
+   "n": 231,
+   "accuracy": 0.696969696969697,
+   "ece": 0.07959113250670301,
+   "calibration_axis": 84.0817734986594,
+   "brier": 0.4192043699209175
+  }
+ }
+}

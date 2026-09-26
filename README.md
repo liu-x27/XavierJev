@@ -126,7 +126,8 @@ did not choose. `choice()` labels its options A, B, C… and `rubric()` numbers 
 so the whole distribution comes out of one forward pass, and `coverage` says how much of
 that token's probability landed on the labels at all — a model that wanted to start a
 sentence instead should be visible as that, not as a confident renormalisation of what
-was left. `noul()` reports it too, as the share of the token on a yes or a no, and an
+was left. Where the options sit moves the answer, though: llama3.1:8b picks the first of
+`choice()`'s options about twice as often as no preference would ([On JevBench](#on-jevbench)). `noul()` reports it too, as the share of the token on a yes or a no, and an
 answer with less than 95% of it (`MIN_COVERAGE`, a half before 0.2.0) counts as a judge failure in all four decisions
 below. llama3.1:8b has put all of it on Y or N on every call measured.
 
@@ -607,9 +608,17 @@ answers. llama3.1:8b, with a 16k context for the hard tier's long states (Ollama
 | hard | 111 | **36.0%** | **3.6** | **0.304** |
 | all public | 231 | 61.0% | 45.0, weighted as JevBench weights its tiers | 0.174 |
 
-The hard tier — long policies and multi-hop states, up to about 15,000 characters — is where
-one token from an 8B instruct model runs out: barely above chance, and confident while
-wrong. The weighted 45.0 sits beside the leaderboard's raw Qwen3-8B direct-logit baseline,
+The hard tier — long policies and multi-hop states, up to about 15,000 characters — comes out
+barely above chance, and confident while wrong. Much of that is where the options sit rather
+than what the model knows. `npm run eval:option-order` asks every task in every order its
+options can be listed in: `choice()` picks the option listed first 47.8% of the time, where no
+preference would give 22.1%, and averaging each label's probability over the orders — 3.5
+times the calls — scores the hard tier at 51.4%, 26.7 above chance with an ECE of 0.117, and
+all public tasks at 56.9 weighted. None of the four decisions uses `choice()` or `rubric()`,
+so nothing shipped moves; a caller of `choice()` should know that on half of these tasks its
+answer depended on the order
+([The order the options are listed in](docs/measurements.md#the-order-the-options-are-listed-in)).
+The weighted 45.0 sits beside the leaderboard's raw Qwen3-8B direct-logit baseline,
 45.7 on that axis (rank 54 of 93 in v1.4.2), which is measured over the full set including a
 sealed half, so they are neighbours rather than a comparison; the trained judges above it do
 better. There is no composite here, because JevBench's composite needs the sealed set. And a
@@ -717,8 +726,7 @@ npm run lint
 npm run build             # the library, to dist/
 npm run eval:risk-gate                    # offline: the allow-list is its default backend
 npm run eval:risk-gate -- --backend llm   # the other evals ask the judge by default:
-                                          # routing retry stop snake flappy throughput calibration order latency ladder
-npm run figures                           # redraws docs/at-a-glance.svg and docs/ladder.svg from docs/data/
+                                          # routing retry stop snake flappy throughput calibration order latency laddernpm run figures                           # redraws docs/at-a-glance.svg and docs/ladder.svg from docs/data/
 npm run eval:risk-gate -- --cases test3   # a held-out set; read its docstring first
 ```
 

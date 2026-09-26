@@ -74,12 +74,13 @@ wrong first.
 | [What is not tested](#what-is-not-tested) | the endpoint survey, and which sets are burnt |
 | [What the router measures](#what-the-router-measures-and-what-it-cannot) | and why it is the weaker of the two |
 | [The order Y and N are named in](#the-order-y-and-n-are-named-in) | a tidy-looking edit that moved every score, and the self-check it led to |
+| [The order the options are listed in](#the-order-the-options-are-listed-in) | `choice()` picks what sits first; averaging the orders lifts JevBench's hard tier from 3.6 to 26.7 above chance |
 | [Where a decision's time goes](#where-a-decisions-time-goes) | one pass per question, a shared prefix, and slots that make it slower |
 | [Telling the snake about room](#telling-the-snake-about-room) | a five-game win that twenty games on a new seed took back |
 | [Smaller judges](#smaller-judges) | barely faster, much worse, and a threshold that does not travel |
 | [Beside a rule-based guard](#beside-a-rule-based-guard) | opposite failures: one misses most harm, the other most of the benefit |
 | [On real traffic](#on-real-traffic) | a quarter cleared, all of it harmless on reading, held back by one question |
-| [On JevBench](#on-jevbench) | easy solved, hard at chance and confident |
+| [On JevBench](#on-jevbench) | easy solved, hard at chance and confident — as the options are listed |
 | [Reads do not count](#reads-do-not-count) | the first wording chosen on real traffic, registered before it was measured |
 | [Counting what it let through](#counting-what-it-let-through) | 1,181 clears read by hand: six by the letter, one that could lose work |
 | [The same weights on another server](#the-same-weights-on-another-server) | llama.cpp gives Ollama's answers once it builds Ollama's prompt, and its default does not |
@@ -676,6 +677,68 @@ one, re-run, moved 0.01.
 
 ---
 
+## The order the options are listed in
+
+*2026-09-26, `npm run eval:option-order`, llama3.1:8b behind an Ollama model with `num_ctx
+16384`, JevBench's 231 public tasks. Aggregates in `docs/data/option-order.json`; JevBench's
+own scoring of both columns below in `docs/data/jevbench-orderings.json`.*
+
+`choice()` lists its options and `rubric()` its levels in the prompt, the way `noul()` names
+Y and N, so the question [the order Y and N are named in](#the-order-y-and-n-are-named-in)
+asked of the gate stands for them too. JevBench's public tasks give all three primitives a
+labelled set: each of the 139 `choice` tasks asked once per cyclic rotation of its options,
+so every option sits at every position once (628 answers); the 18 `score` tasks with their
+levels listed low to high and then high to low; the 74 `noul` tasks with Y named first and
+then N.
+
+| primitive | the order moved the answer | accuracy as JevBench lists them | averaged over the orders |
+|---|---|---|---|
+| `choice` (139) | on 76 tasks; 68 right in one order and wrong in another | 54.0% (a random rotation: 58.8%) | **66.2%** |
+| `rubric` (18) | 8 levels changed | 66.7% (high to low: 61.1%) | 77.8% |
+| `noul` (74) | 8 decisions changed at 0.5 | 73.0% (N first: 70.3%) | 74.3% |
+
+`choice()` picks whatever sits first. The first position won 47.8% of the answers, where no
+preference would give it 22.1%, and the last 14.0%. The lean is largest with the fewest
+options: 76% first against a third with three, 61% against a quarter with four, 38% and 33%
+with five and six. `choice()` labels its options A, B, C… by position, so this cannot tell a
+lean to the first slot from a lean to the letter A; Zheng et al. (ICLR 2024) trace most of it
+to the letters. The other two lean towards what is listed last: naming N first raised
+`noul()`'s P(yes) by 1.02 in log-odds on average, the same direction as the 1.6–2.9 on the
+gate's questions, and `rubric()` with its levels high to low came out 0.37 of a level lower
+on average, 0.44 in size.
+
+Averaging each label's probability over the orders costs every order's call — 812 calls for
+the 231 tasks, 3.5 times as many — and cancels most of it. JevBench's own scoring of this
+run's as-listed answers and of the averaged ones:
+
+| tier | as listed: accuracy · above chance · ECE | averaged over the orders |
+|---|---|---|
+| easy (48) | 100% · 100 · 0.006 | 100% · 100 · 0.013 |
+| original (72) | 73.6% · 61.7 · 0.168 | 77.8% · 67.7 · 0.101 |
+| hard (111) | 36.0% · 3.6 · 0.305 | **51.4% · 26.7 · 0.117** |
+| all public (231) | 61.0% · 45.0 weighted · 0.175 | **69.7% · 56.9 weighted · 0.080** |
+
+The as-listed column is a fresh set of calls and reproduces [On JevBench](#on-jevbench) to
+within 0.001.
+
+What this does and does not show. Much of the hard tier's closeness to chance was where the
+options sat, not what the model knew: its 67 `choice` tasks went from 16 right as listed —
+fewer than a random rotation gives, 22.4 on average — to 32 averaged. Nothing was fitted:
+the rotations and the plain mean are fixed before an answer comes back, and JevBench's code
+grades the result. It is one model on 231 tasks, and only 18 of them are `score` tasks, so
+the `rubric` row gives a direction, not a size. The leaderboard's numbers include a sealed
+half, so 56.9 is not a place on it.
+
+What it changes. None of the four decisions calls `choice()` or `rubric()` — the gate, the
+router, the retry and the stop are all `noul()` — so nothing shipped moves. For `noul()`
+the average buys little, 74.3% against 73.0% here, and on the gate's dev set it ranked no
+better. For a caller of `choice()` it is another matter: on half of these tasks the answer
+depended on where the options happened to sit, and paying for every rotation was the
+difference between 54% and 66%. The primitive does not offer that yet; a caller can do it by
+asking once per rotation and averaging by label.
+
+---
+
 ## Where a decision's time goes
 
 *2026-09-24, llama3.1:8b on Ollama 0.34.2, RTX 5080, `npm run eval:latency`.*
@@ -897,6 +960,11 @@ Every answer put all of its first token on a label.
 A uniform answer to every task, for reference: accuracy 0.320, ECE 0.017, weighted above
 chance 1.3. The leaderboard's raw Qwen3-8B direct-logit baseline is 45.7 on the intelligence
 axis in v1.4.2 (rank 54 of 93), over public and sealed tasks together.
+
+These are the options in the order JevBench lists them, one call a task. Averaged over every
+order they can be listed in, the same model scores the hard tier at 0.514 (26.7 above chance,
+ECE 0.117) and all public tasks at 56.9 weighted — [The order the options are listed
+in](#the-order-the-options-are-listed-in).
 
 ---
 

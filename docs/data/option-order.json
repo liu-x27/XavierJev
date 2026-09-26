@@ -1,0 +1,57 @@
+{
+ "measured": "2026-09-26",
+ "model": "llama3.1-8b-16k",
+ "choice": {
+  "tasks": 139,
+  "asks": 628,
+  "accuracyAsGiven": 0.539568345323741,
+  "meanAccuracyOverRotations": 0.5875796178343949,
+  "accuracyOfAveragedDistribution": 0.6618705035971223,
+  "sameAnswerUnderEveryRotation": 63,
+  "answerMovedUnderSomeRotation": 76,
+  "meanTotalVariation": 0.2678798787583676,
+  "firstPositionPicked": 0.47770700636942676,
+  "lastPositionPicked": 0.14012738853503184,
+  "positionChance": 0.22133757961783498,
+  "tasksRightUnderSomeRotationWrongUnderAnother": 68,
+  "firstPositionByOptionCount": {
+   "3": {
+    "tasks": 15,
+    "firstPicked": 0.7555555555555554,
+    "chance": 0.3333333333333333
+   },
+   "4": {
+    "tasks": 53,
+    "firstPicked": 0.6132075471698113,
+    "chance": 0.25
+   },
+   "5": {
+    "tasks": 55,
+    "firstPicked": 0.3781818181818183,
+    "chance": 0.2
+   },
+   "6": {
+    "tasks": 16,
+    "firstPicked": 0.3333333333333333,
+    "chance": 0.16666666666666666
+   }
+  }
+ },
+ "score": {
+  "tasks": 18,
+  "sameLevel": 10,
+  "accuracyAscending": 0.6666666666666666,
+  "accuracyDescending": 0.6111111111111112,
+  "meanExpectedLevelShift": -0.36694613046598823,
+  "meanAbsExpectedLevelShift": 0.4446173524408312,
+  "accuracyOfAveragedDistribution": 0.7777777777777778
+ },
+ "noul": {
+  "tasks": 74,
+  "decisionsChanged": 8,
+  "accuracyYesFirst": 0.7297297297297297,
+  "accuracyNoFirst": 0.7027027027027027,
+  "meanLogOddsShift": 1.0240880528409881,
+  "accuracyOfAveragedDistribution": 0.7432432432432432
+ }
+}
