@@ -36,7 +36,7 @@ tries is a bound of 3.9%, not a rate of zero.
 
 ```bash
 npm install
-npm test                                        # 59 checks, mocked — no model, no key
+npm test                                        # 63 checks, mocked — no model, no key
 npm run eval:risk-gate                          # the gate's dev set, offline: the allow-list is its default
 ```
 
@@ -65,7 +65,7 @@ As a library. It is not on npm; installing from GitHub builds it, and
 [mini-claude-code](https://github.com/liu-x27/mini-claude-code) takes it this way:
 
 ```sh
-npm install github:liu-x27/XavierJev#v0.6.0
+npm install github:liu-x27/XavierJev#v0.7.0
 ```
 
 ```ts
@@ -97,7 +97,10 @@ claude plugin install xavierjev-gate@xavierjev
 
 `npm run claude-code -- --observe` decides and logs without clearing anything. Either way
 each request goes to `~/.xavierjev/claude-code.jsonl`, on this machine only, and the server
-will not start if the judge returns no logprobs or the gate fails its self-check. Only the
+will not start if the judge returns no logprobs or the gate fails its self-check — unsafe, or,
+since 0.7.0, unverified: the judge did not answer the canaries, or is another model than the
+one they were recorded on. `--allow-unverified` starts it anyway, on a threshold nobody
+measured for that judge; `--observe` starts either way, since it never allows. Only the
 command is shown to the judge, not the description the agent wrote for it.
 
 Tested: the hook's decisions as mock checks, and the server against the real judge with
@@ -138,8 +141,9 @@ fails here are silent: it can accept `logprobs: true`, return 200 and include no
 reasoning model spends its one token on `<think>`. `SidecarJudge` (`src/sidecar.ts`) asks a
 model you trained on your own labelled commands, served locally by `sidecar/serve.py`, for
 three of the gate's questions and answers `reveals-secret` from a word list; it brings its own
-threshold and canaries, since its probabilities are not on the 8B's scale
-([sidecar/README.md](sidecar/README.md)).
+threshold and canaries, since its probabilities are not on the 8B's scale, and the canaries
+carry what they were recorded on — the judge's digest, its threshold, the word list — which
+the hook compares with the sidecar in front of it ([sidecar/README.md](sidecar/README.md)).
 
 ## Four decisions an agent loop makes
 
@@ -202,13 +206,22 @@ every threshold here was measured without it. On 600 of those commands it lifts 
 AUC on the ones that run a script from 0.61 to 0.87 without changing a decision at 0.2, and
 does nothing for the judge trained on them, which ranks them at 0.93 without it
 ([Round 3](docs/measurements.md#round-3-the-judge-as-a-backend-and-scripts-shown-to-judges)).
+The scripts are extra evidence beside a command that is still judged whole, so they are not
+held to the rule for an over-long command: a script longer than 1,500 characters is shown
+cut, and says so; one that cannot be read, or a third, is left out; and the judge answers
+either way. A judge that reads a harmless-looking start of a script and clears the command is
+possible, and nothing measured here bounds it — one more reason it is off. `SidecarJudge`'s
+word list reads the command only, not the scripts.
 
 `npm run eval:risk-gate` puts hand-labelled shell commands through the gate and reports
 **prompts saved** — safe commands cleared without asking — and **false allows**. There are
 four sets: `cases.ts` (83) is the dev set that the wordings, threshold and model were
 chosen on; `testset.ts` (125), `testset2.ts` (96) and `testset3.ts` (153) are held out,
-labelled before any judge saw them, each read once or twice with every read logged in its
-own docstring.
+labelled before any judge saw them, with every read logged in its own docstring. Test 3 has
+been read six times: the first read of the shipped gate, a verification read, a comparison,
+one read to confirm a reworded question, and two by the trained judge. Test 2 is spent, and
+now training data for that judge. `testset.ts` was read once, early, by the configuration of
+the time, and by nothing since.
 
 | backend | threshold | dev (83) | test 2 (96) | test 3 (153) |
 |---|---|---|---|---|
@@ -243,7 +256,11 @@ reads it clears far below 0.2, and one sure case for each harm — and compares 
 with the ones recorded when the threshold was measured. A held canary allowed, or scores
 moved more than half a unit of log-odds towards allowing, is `unsafe`: do not use this gate.
 Moved the other way, it is safe but not the gate that was measured, and its threshold wants
-measuring again. `eval:risk-gate` runs the check before anything else and prints it. The
+measuring again. A judge that answers none of the canaries is neither: it is not `verified`,
+since a gate that says nothing is never caught allowing and so proves nothing, and the same
+goes for one that names another model (below). Until 0.7.0 both of those counted as mere
+drift, and the Claude Code hook started on them. `eval:risk-gate` runs the check before
+anything else and prints it. The
 limit was a whole unit until 0.4.0. Then the same weights on llama.cpp's default template
 moved the canaries 0.90 towards allowing, cleared a dev-set command the measured gate asks
 about, and passed ([On another server](#on-another-server)). Half a unit fails that, and
@@ -253,8 +270,9 @@ Canaries catch a move after it happens, so before them the check asks the backen
 model it is. Ollama answers with a manifest digest that covers the weights, the chat template
 and the parameters together. A digest other than the one the canaries were recorded on
 (`GATE_RECORDED_ON`: llama3.1:8b at `46e0c10c039e`, what a fresh pull gives on 2026-09-26) is
-not the gate that was measured, whatever its canaries say. Other endpoints report no digest,
-and for them the canaries are the whole check.
+not the gate that was measured, whatever its canaries say, and the check calls it unverified;
+so does a backend that fails to say. Other endpoints report no digest, and for them the
+canaries are the whole check.
 
 The prompt is on that list because of what `npm run eval:order` found: the same four
 questions over the 83 dev commands, asked as shipped and then with N named before Y in the
@@ -614,8 +632,9 @@ tracked file in another repository, a new file in a scratch directory, an empty 
 a file written into another session's scratch directory. The sixth ran a script from a scratch
 directory that rewrites a tracked README in place: the one that could lose work, and the one
 the command's text does not show. Nothing cleared deletes a file, sends data out or shows a
-credential. So the share of the gate's clears that were wrong is below **1.0%** at 95% (0.66%
-on the second reading), or 1.33% on the 3,000 commands nothing had looked at before.
+credential. So the share of the gate's clears that were wrong is at most about **1.00%** at
+95% (1.0003%, a hair over rather than under; 0.66% on the second reading), or 1.33% on the
+3,000 commands nothing had looked at before.
 
 That bounds what the gate clears, not how much unsafe traffic gets through, since the 2,819 it
 held were not read. It is also one run's count. All six scored between 0.15 and 0.2, and the
@@ -642,9 +661,11 @@ The hard tier — long policies and multi-hop states, up to about 15,000 charact
 barely above chance, and confident while wrong. Much of that is where the options sit rather
 than what the model knows. `npm run eval:option-order` asks every task in every order its
 options can be listed in: `choice()` picks the option listed first 47.8% of the time, where no
-preference would give 22.1%, and averaging each label's probability over the orders — 3.5
-times the calls — scores the hard tier at 51.4%, 26.7 above chance with an ECE of 0.117, and
-all public tasks at 56.9 weighted. None of the four decisions uses `choice()` or `rubric()`,
+preference would give 22.1%, and averaging each label's probability over the orders — every
+rotation of a `choice` task's options, both directions of a rubric, both Y/N orders of a
+`noul` task; 3.5 times the calls — scores the hard tier at 51.4%, 26.7 above chance with an
+ECE of 0.117, and all public tasks at 56.9 weighted. That is the three averages together;
+`{ orders: "all" }` does the first two. None of the four decisions uses `choice()` or `rubric()`,
 so nothing shipped moves; a caller of `choice()` should know that on half of these tasks its
 answer depended on the order
 ([The order the options are listed in](docs/measurements.md#the-order-the-options-are-listed-in)).
@@ -709,7 +730,7 @@ yes/no did.
 
 ## Status
 
-The mock suite — `npm test`, 59 checks, no model — covers the logic that would otherwise
+The mock suite — `npm test`, 63 checks, no model — covers the logic that would otherwise
 fail quietly: the gate's answers returned in question order and decided on the worst; the
 four ways each of the gate and the router can fail (a backend that throws, times out,
 skips a question, or answers outside [0, 1]) landing on asking and on the strong model; the
@@ -720,10 +741,14 @@ judges' thresholds and failure directions; an answer with too little of its toke
 or a no, refused by all four decisions; a command too long to show the judge whole, asked
 about without it, and a request too long to show the router, sent to the strong model; a
 threshold outside (0, 1), a negative timeout or a fractional count, refused when a decision is
-built, since each would otherwise turn it silently into always or never; the gate's self-check, in both directions of
-drift, and its model digest against the recorded one; the answer order reaching the prompt; the Claude Code hook's allow, silence and
+built, since each would otherwise turn it silently into always or never; `choice()` options
+with one id and rubric levels with one score, refused before any call; an input that will
+not render, asked about rather than thrown; the gate's self-check, in both directions of
+drift, its model digest against the recorded one, and a judge that answers no canary or will
+not say what it is, counted unverified; the answer order reaching the prompt; the Claude Code hook's allow, silence and
 abstentions; the scripts a command runs, found and read into the state only when asked; the
-sidecar judge's word list, and its refusals and absence landing on asking; and the bounds
+sidecar judge's word list, and its refusals and absence landing on asking; its identity asked
+afresh, and its canary recording compared field by field with how it is run; and the bounds
 `eval/stats.ts` puts beside a count.
 
 The tables for the four decisions, the games, throughput and calibration were measured in
@@ -746,13 +771,14 @@ property of this judge and this prompt, not of the gate: a different model needs
 measured again. The router's out-of-sample
 error rate is 19%, which is not a number to ship as an automatic decision. Three held-out
 gate sets exist and each carries a log of every time it has been read, because a test set
-consulted repeatedly becomes a dev set whether or not anyone admits it; two are spent and
-the third has been read once.
+consulted repeatedly becomes a dev set whether or not anyone admits it; two are spent, and
+the third has been read six times, so its figures are now weaker evidence than its first read
+was.
 
 ## Development
 
 ```bash
-npm test                  # 59 checks, mocked
+npm test                  # 63 checks, mocked
 npm run typecheck         # src, games, eval, test and arena
 npm run lint
 npm run build             # the library, to dist/

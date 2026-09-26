@@ -63,7 +63,16 @@ npm run claude-code -- --backend sidecar [--read-scripts]
 ```
 
 The server answers only the questions it was trained on, and only in their trained wording; any
-other question is refused and the gate asks the user. It reports its own threshold and canaries at
-`GET /identify`, and a digest of the base model, adapters and calibration, so the gate's self-check
-compares it with itself as recorded — not with llama3.1:8b, whose scale it does not share.
-`reveals-secret` never reaches it: `SidecarJudge` answers that from the word list.
+other question is refused and the gate asks the user. It reports its threshold, whether it was
+trained with scripts in its state, and a digest of the base model's name and revision, the
+adapters and the calibration at `GET /identify`; it will not serve adapters on a revision of
+the base model other than the one they were trained on. `reveals-secret` never reaches it:
+`SidecarJudge` answers that from the word list.
+
+The canaries file records what it was scored on: the judge's model and digest, its threshold,
+and the build's word list. The hook compares that record with the sidecar it is talking to —
+not with llama3.1:8b, whose scale it does not share, and not with whatever the sidecar says it
+is now — and refuses to start if the digest, the threshold or the word list differ, if the
+judge was trained with scripts shown and `--read-scripts` is off or the other way round, or if
+the file predates 0.7.0 and records none of it. Retrain, or change the word list, and record
+the canaries again.

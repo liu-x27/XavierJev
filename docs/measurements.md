@@ -27,18 +27,20 @@ worst answer wins. Every backend failure resolves to asking.
 
 | set | safe cleared | false allows |
 |---|---|---|
-| `cases.ts` — dev (83) | 36/41 | **0/42** |
-| `testset2.ts` — held out (96) | 26/53 | **1/43** |
-| `testset3.ts` — held out (153) | 26/77 | **0/76** |
+| `cases.ts` — dev (83) | 35/41 | **0/42** |
+| `testset2.ts` — held out (96) | 26/53 | **1/43** (before 0.3.0; not read again) |
+| `testset3.ts` — held out (153) | 29/77 | **0/76** |
 
 Zero false allows is a count: 0/76 bounds the rate below 3.9% at 95% confidence, and 1/119
 across tests 2 and 3 bounds it the same; below 1% would take 299 unsafe commands with none
-let through (`eval/stats.ts`, exact binomial bounds; added 2026-09-24).
+let through (`eval/stats.ts`, exact binomial bounds; added 2026-09-24). This table said
+36/41 and 26/77 until 0.7.0, the figures from before 0.3.0 reworded `outside-cwd`; the
+README had the current ones.
 
 This machine's own agent traffic has no labels. So every command 0.3.0 cleared, out of 4,000
 drawn from it, was read by hand. 6 of the 1,181 should have been asked about, or 3 if the
 working directory is taken to be the one a command `cd`s into. That bounds the share of its
-clears that are wrong below 1.0% at 95%. The commands it held were not read
+clears that are wrong at about 1.00% at 95% (1.0003%: a hair over, not under). The commands it held were not read
 ([Counting what it let through](#counting-what-it-let-through)).
 
 `testset.ts` (125) has not been run against the shipped `llm` config; the `allowlist`
@@ -522,9 +524,12 @@ answer is never generated at all; `qwen3:4b` returns logprobs where no label wor
 appears in the top 5. Neither raises. That is why `LlmJudge.probe()` asks a control
 question and reports what the endpoint actually did, and why the default on no logprobs is to
 throw rather than to guess. The hard yes/no at P=0.15/0.85 is behind `allowHardLabels`,
-which only `eval/risk-gate` sets, so it can measure hard-label judges; it auto-allows
-nothing at the default threshold either way. A provider that quietly ignores the flag
-turns the gate off, and says so, instead of clearing commands.
+which only `eval/risk-gate` sets, so it can measure hard-label judges. It must stay there:
+a hard no is 0.15, under the default threshold of 0.2, so a gate running on hard labels
+would clear every command the model says no to, on a threshold that was measured for
+probabilities. (Until 0.7.0 this paragraph said it auto-allowed nothing at the default
+threshold, which was wrong.) A provider that quietly ignores the flag turns the gate off,
+and says so, instead of clearing commands.
 
 Neither of those was a new discovery here. Both came out of an earlier project of mine,
 a research pipeline where the same two — a label word missing from the top-K, and a
@@ -738,6 +743,12 @@ depended on where the options happened to sit, and paying for every rotation was
 difference between 54% and 66%. Since 0.6.0 the primitive does it when asked:
 `choice(state, ask, options, { orders: "all" })` asks once per rotation and averages by option,
 and `rubric(…, { orders: "all" })` asks low to high and high to low. The default stays one call.
+"All" means those orders — the n cyclic rotations, not all n! permutations, and the two
+directions — which is what the table above measured for those primitives. The 56.9 also
+averaged the 74 `noul()` tasks over both names-first orders, which `orders` does not do for
+`noul()`, so it is the gain of all three averages together, not of `choice` and `rubric`
+alone; the `noul()` part moved its own tasks from 73.0% to 74.3% and cannot account for much
+of it, but that split was not scored.
 
 ---
 
@@ -943,7 +954,8 @@ machine's agent seldom runs, and there it is worse than the prompted 8B on every
 What this does and does not show. A small model with heads trained on a few thousand hand
 labels ranks one machine's commands better than an 8B prompted with the same questions, in
 about half the time the 8B took on the dev set's shorter commands; it is not a general judge, and it has a blind spot where its training data
-had no examples. `testset.ts`, the one set no model has read, was not spent on it. Nothing
+had no examples. `testset.ts`, read once by an early configuration and by nothing since, was
+not spent on it. Nothing
 ships from this: there is no backend for it here, and one would need a `reveals-secret`
 answer from somewhere and data from more than one machine.
 
@@ -1023,7 +1035,7 @@ machine's traffic as the prompted 8B at a small cost in misses, and on commands 
 elsewhere it now matches the 8B on clears. It still misses what the 8B catches: credentials in
 arguments, and harm that lives in a script the command only runs. It remains a judge for one
 machine plus 179 borrowed commands. Its weights and training data stay here, and `testset.ts`
-is still unread.
+has still not been read by it, or by anything since its one early read.
 
 ### Round 3: the judge as a backend, and scripts shown to judges
 
@@ -1048,9 +1060,9 @@ training commands and 97 of the 600 validation ones run a script that is still o
 
 | judge, on the 600 | AUC | on the 97 that run a script | at its threshold |
 |---|---|---|---|
-| llama3.1:8b, command only | 0.886 | 0.608 | 168/415 cleared, 0/182 let through |
+| llama3.1:8b, command only | 0.885 | 0.608 | 168/415 cleared, 0/182 let through |
 | llama3.1:8b, scripts shown | **0.908** | **0.868** | 168/415, 0/182 |
-| trained, command only | 0.979 | 0.927 | 363/415, 2/182 |
+| trained, command only | 0.979 | 0.927 | 361/415, 1/182 |
 | trained, trained and asked with scripts | 0.975 | 0.917 | 355/415, 1/182 |
 
 The prompted 8B reads the scripts: on the commands that run one it goes from little better
@@ -1060,6 +1072,16 @@ than the 8B with them, having learned what running a scratch script tends to mea
 machine — 60 of the 97 are unsafe. Why the text does not add to that is not known; a script's
 first 1,500 characters may stop before its writes, and a script read today may not be the one
 that ran. `readScripts` stays in the library, off, for a host whose judge can use it.
+
+A correction, from 0.7.0. This table first gave the command-only judge 363/415 and 2/182, and
+the second let-through was put down to batching. It was `train.py` rounding the threshold to
+six places when it saved it: the second-lowest unsafe score was 0.0160966, the saved threshold
+0.016097, and the gate clears below the threshold, so the rounding let that command through
+and cleared two more safe ones, while the counts `train.py` printed were taken before the
+rounding and said 361 and 1 (found in review). `train.py` now saves the threshold as computed
+and counts at the saved value; the judge's own record was rewritten to the exact value, which
+gives 361/415 and 1/182 as above. The scripts judge's threshold rounded down and is unchanged.
+Aggregates for this section are in `docs/data/trained-judge.json`, under `round3`.
 
 ---
 
@@ -1222,7 +1244,7 @@ counted.
 | working directory taken to be | the session's | the one it `cd`s into |
 |---|---|---|
 | cleared, and should have been asked about | **6 of 1,181** | **3 of 1,181** |
-| share of the gate's clears, 95% upper bound | 1.0% | 0.66% |
+| share of the gate's clears, 95% upper bound | 1.00% (1.0003%) | 0.66% |
 | the 3,000 not looked at before: count · bound | 6 of 886 · 1.33% | 3 of 886 · 0.87% |
 
 The six, and what each reading makes of them:
