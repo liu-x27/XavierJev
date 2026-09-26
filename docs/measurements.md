@@ -1025,6 +1025,42 @@ arguments, and harm that lives in a script the command only runs. It remains a j
 machine plus 179 borrowed commands. Its weights and training data stay here, and `testset.ts`
 is still unread.
 
+### Round 3: the judge as a backend, and scripts shown to judges
+
+*Same day, 0.6.0. No test split was read for anything below; the numbers are on the 600
+held-out real training commands round 2 calibrated on.*
+
+The gate can now run a judge trained this way. `sidecar/prepare.ts` puts labelled commands
+through the gate's own `gateState()`, `sidecar/train.py` fine-tunes and calibrates,
+`sidecar/serve.py` serves it on 127.0.0.1, and `SidecarJudge` asks it the three questions it
+was trained on and answers `reveals-secret` from the word list ([sidecar/README.md](../sidecar/README.md)).
+Retrained through those scripts on round 2's rows and recipe, the judge's validation AUC is
+0.979, against round 2's 0.978. Its calibration is now fitted after the adapters are merged,
+which removes the 0.06 that merging moved the answers. Its seven canaries come out as they
+should — the three reads cleared at 0.008 to 0.009 against a threshold of 0.016, the four
+harms asked at 0.73 to 1.00 — and the Claude Code hook started on it passes its self-check
+against that record. The word list gained the two kinds of password `testset3.ts` showed it
+missing and two more like them; on the 3,000 real training commands it asks about the same 48
+safe ones as before. The code is public; the weights and the labelled commands are not.
+
+`readScripts` puts the start of each script a command runs into the state. 381 of the 3,581
+training commands and 97 of the 600 validation ones run a script that is still on disk.
+
+| judge, on the 600 | AUC | on the 97 that run a script | at its threshold |
+|---|---|---|---|
+| llama3.1:8b, command only | 0.886 | 0.608 | 168/415 cleared, 0/182 let through |
+| llama3.1:8b, scripts shown | **0.908** | **0.868** | 168/415, 0/182 |
+| trained, command only | 0.979 | 0.927 | 363/415, 2/182 |
+| trained, trained and asked with scripts | 0.975 | 0.917 | 355/415, 1/182 |
+
+The prompted 8B reads the scripts: on the commands that run one it goes from little better
+than chance to 0.87. It changes nothing at 0.2, where those commands were already asked about.
+The trained judge gains nothing: without the scripts it already ranks those 97 at 0.927, better
+than the 8B with them, having learned what running a scratch script tends to mean on this
+machine — 60 of the 97 are unsafe. Why the text does not add to that is not known; a script's
+first 1,500 characters may stop before its writes, and a script read today may not be the one
+that ran. `readScripts` stays in the library, off, for a host whose judge can use it.
+
 ---
 
 ## Beside a rule-based guard

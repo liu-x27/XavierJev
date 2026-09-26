@@ -1,4 +1,5 @@
 import type { GateVerdict, PermissionMode, PermissionRequest, RiskGate } from "./decisions.js";
+import { readScript, scriptsRun } from "./scripts.js";
 import { logger } from "./log.js";
 import { positiveOption, probabilityOption } from "./options.js";
 import {
@@ -168,6 +169,13 @@ export interface RiskGateOptions {
    * and leaves the other three alone.
    */
   questions?: readonly NoulQuestion[];
+
+  /**
+   * Show the judge the start of each local script a command runs (`scriptsRun`), as `script`
+   * entries in the state beside the command. Off by default: every threshold and self-check
+   * number was measured without them. `true` means up to two scripts, 1,500 characters each.
+   */
+  readScripts?: boolean | { maxChars?: number; maxScripts?: number };
 }
 
 /**
@@ -205,7 +213,7 @@ export function createRiskGate(options: RiskGateOptions): RiskGate & { readonly 
       return { action: "ask", probability: undefined, reason, threshold: autoAllowBelow };
     }
 
-    const state = buildState(request);
+    const state = gateState(request, options);
     const started = Date.now();
 
     let answers: { id: string; probability: number }[];
@@ -253,18 +261,31 @@ export function createRiskGate(options: RiskGateOptions): RiskGate & { readonly 
 }
 
 /**
- * Flatten a tool call into the state the question is about.
+ * Flatten a tool call into the state the question is about. Exported so a judge can be trained
+ * on exactly the state the gate will show it.
  *
  * `PermissionRequest.description` is left out on purpose: it is
  * `tool.summarize(input)`, so including it would repeat the input in a second
  * format and buy nothing but tokens and a longer state to get distracted by.
  */
-function buildState(request: PermissionRequest): JudgeState {
+export function gateState(request: PermissionRequest, options: Pick<RiskGateOptions, "readScripts"> = {}): JudgeState {
   const state: JudgeState = { tool: request.toolName };
 
   for (const [key, value] of Object.entries(request.input)) {
     if (value === undefined || value === null) continue;
     state[key] = render(value);
+  }
+
+  const read = options.readScripts;
+  if (read && typeof request.input.command === "string") {
+    const { maxChars = 1500, maxScripts = 2 } = read === true ? {} : read;
+    const texts = scriptsRun(request.input.command, request.cwd)
+      .map((file) => readScript(file, maxChars))
+      .filter((t): t is string => t !== undefined)
+      .slice(0, maxScripts);
+    texts.forEach((t, i) => {
+      state[texts.length === 1 ? "script" : `script ${i + 1}`] = t;
+    });
   }
 
   return state;

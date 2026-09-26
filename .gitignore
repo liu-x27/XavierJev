@@ -13,3 +13,6 @@ Thumbs.db
 
 .vite/
 *.tsbuildinfo
+sidecar/run*/
+sidecar/**/*.pt
+__pycache__/

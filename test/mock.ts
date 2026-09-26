@@ -12,7 +12,10 @@
  * thresholds sit.
  */
 
+import { mkdtempSync, writeFileSync } from "node:fs";
 import * as http from "node:http";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import chalk from "chalk";
 import {
   BIRD_X,
@@ -40,11 +43,14 @@ import {
   createRiskGate,
   GATE_CANARIES,
   GATE_RECORDED_ON,
+  gateState,
   RISK_QUESTIONS,
 } from "../src/gate.js";
 import { LlmJudge } from "../src/llm.js";
 import { createRetryJudge, patternRetryJudge } from "../src/retry.js";
 import { createModelRouter } from "../src/router.js";
+import { scriptsRun } from "../src/scripts.js";
+import { SECRET_WORDS, SidecarJudge } from "../src/sidecar.js";
 import { casesNeeded, upperBound } from "../eval/stats.js";
 import { decide } from "../integrations/claude-code/decide.js";
 import { anyStopJudge, createRepeatStopJudge, createStopJudge } from "../src/stop.js";
@@ -1203,6 +1209,126 @@ await checkAsync("钩子：判断器只看到命令本身，看不到 agent 自�
   if (JSON.stringify(seen[0]) !== JSON.stringify({ tool: "Bash", command: "wc -l src/agent.ts" })) {
     throw new Error(`state: ${JSON.stringify(seen[0])}`);
   }
+});
+
+// ─────────────────────────────────────────────
+// 12. Scripts and the sidecar judge
+// ─────────────────────────────────────────────
+section("12. Scripts and the sidecar judge");
+
+const scriptDir = mkdtempSync(path.join(tmpdir(), "xavierjev-scripts-"));
+writeFileSync(path.join(scriptDir, "patch.py"), "open('README.md', 'w').write('x')\n");
+writeFileSync(path.join(scriptDir, "long.js"), `${"// filler\n".repeat(400)}require('fs').rmSync('src', { recursive: true })\n`);
+
+check("scriptsRun()：认出命令直接跑的本地脚本，展开变量、按 cd 或工作目录补全相对路径", () => {
+  const want = path.join(scriptDir, "patch.py");
+  const cases: Array<[string, string | undefined, string[]]> = [
+    ["python patch.py", scriptDir, [want]],
+    [`cd "${scriptDir}" && python3 -u patch.py --dry`, undefined, [want]],
+    [`S="${scriptDir}"; python "$S/patch.py"`, undefined, [want]],
+    [`node ${path.join(scriptDir, "long.js")} && python patch.py`, scriptDir, [path.join(scriptDir, "long.js"), want]],
+    ["python -m http.server 8000", scriptDir, []],
+    ["npm run build", scriptDir, []],
+    ['node -e "console.log(1)"', scriptDir, []],
+    ["python patch.py", undefined, []], // relative, and no working directory to take it from
+  ];
+  for (const [command, cwd, expected] of cases) {
+    const got = scriptsRun(command, cwd).map((f) => path.normalize(f));
+    if (JSON.stringify(got) !== JSON.stringify(expected.map((f) => path.normalize(f)))) {
+      throw new Error(`${command}: ${JSON.stringify(got)}`);
+    }
+  }
+});
+
+check("readScripts：默认不读；打开后脚本开头进 state，太长就截断并说明", () => {
+  const req = (command: string) => ({ toolName: "Bash", input: { command }, description: command, cwd: scriptDir });
+  const off = gateState(req("python patch.py"));
+  if (JSON.stringify(off) !== JSON.stringify({ tool: "Bash", command: "python patch.py" })) throw new Error(`默认: ${JSON.stringify(off)}`);
+  const on = gateState(req("python patch.py"), { readScripts: true });
+  if (!on.script?.includes("open('README.md', 'w')")) throw new Error(`脚本没进 state: ${JSON.stringify(on)}`);
+  const cut = gateState(req("node long.js"), { readScripts: { maxChars: 200 } });
+  if (!cut.script?.includes("first 200 of") || cut.script.includes("rmSync")) throw new Error(`截断: ${cut.script?.slice(0, 120)}`);
+  const two = gateState(req("node long.js; python patch.py"), { readScripts: true });
+  if (!two["script 1"] || !two["script 2"]) throw new Error(`两个脚本: ${Object.keys(two)}`);
+});
+
+check("SECRET_WORDS：密钥文件、密码参数、user:pass 都算；平常的命令不算", () => {
+  const yes = ["cat .env", "cat ~/.ssh/id_rsa", "mysql -u root -pS3cret mydb", "sshpass -p x ssh host", "curl -u admin:hunter2 https://api.example.com", "git clone https://bob:pw@example.com/r.git", "printenv"];
+  const no = ["ls -la", "mysql -u root -p mydb", "npm install", "git log --oneline", "curl -s https://example.com"];
+  for (const c of yes) if (!SECRET_WORDS.test(c)) throw new Error(`应该算: ${c}`);
+  for (const c of no) if (SECRET_WORDS.test(c)) throw new Error(`不该算: ${c}`);
+});
+
+/** A stand-in for sidecar/serve.py: answers the questions it was trained on, refuses others. */
+async function fakeSidecar(answers: Record<string, number>, info: Record<string, unknown> = {}) {
+  const bodies: Array<{ state: JudgeState; questions: Array<{ id: string }> }> = [];
+  const server = http.createServer((req, res) => {
+    let raw = "";
+    req.on("data", (c) => {
+      raw += c;
+    });
+    req.on("end", () => {
+      res.setHeader("content-type", "application/json");
+      if (req.url === "/identify") {
+        res.end(JSON.stringify({ model: "qwen3-0.6b+lora", digest: "abc123", detail: "test", questions: Object.keys(answers), threshold: 0.03, ...info }));
+        return;
+      }
+      const body = JSON.parse(raw);
+      bodies.push(body);
+      const unknown = body.questions.filter((q: { id: string }) => !(q.id in answers));
+      if (unknown.length) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ error: `not trained on ${unknown.map((q: { id: string }) => q.id)}` }));
+        return;
+      }
+      res.end(JSON.stringify({ answers: body.questions.map((q: { id: string }) => ({ id: q.id, probability: answers[q.id] })) }));
+    });
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const { port } = server.address() as { port: number };
+  const judge = new SidecarJudge({ url: `http://127.0.0.1:${port}` });
+  const close = () =>
+    new Promise<void>((r) => {
+      server.close(() => r());
+      server.closeAllConnections();
+    });
+  return { judge, bodies, close };
+}
+
+await checkAsync("SidecarJudge：三问交给 sidecar，reveals-secret 按词表本地回答，按问题顺序返回", async () => {
+  const fake = await fakeSidecar({ "destroys-data": 0.01, "outside-cwd": 0.02, exfiltrates: 0.005 });
+  try {
+    const qs = [...RISK_QUESTIONS];
+    const clean = await fake.judge.noul({ tool: "Bash", command: "ls -la" }, qs);
+    if (clean.map((a) => `${a.id}=${a.probability}`).join(" ") !== "destroys-data=0.01 outside-cwd=0.02 exfiltrates=0.005 reveals-secret=0") {
+      throw new Error(`答案: ${JSON.stringify(clean)}`);
+    }
+    if (fake.bodies[0]!.questions.map((q) => q.id).includes("reveals-secret")) throw new Error("reveals-secret 不该发给 sidecar");
+    const secret = await fake.judge.noul({ tool: "Bash", command: "cat .env" }, qs);
+    if (secret.find((a) => a.id === "reveals-secret")?.probability !== 1) throw new Error("词表没拦住 cat .env");
+    const info = await fake.judge.info();
+    const id = await fake.judge.identify();
+    if (info.threshold !== 0.03 || id.digest !== "abc123") throw new Error(`identify: ${JSON.stringify(info)}`);
+    const gate = createRiskGate({ backend: fake.judge, autoAllowBelow: info.threshold });
+    const v = await gate({ toolName: "Bash", input: { command: "ls -la" }, description: "ls -la" });
+    if (v.action !== "allow") throw new Error(`按 sidecar 阈值 0.03 应放行: ${v.reason}`);
+  } finally {
+    await fake.close();
+  }
+});
+
+await checkAsync("SidecarJudge：没训练过的问题、sidecar 挂了，都是判断失败，闸门转问用户", async () => {
+  const fake = await fakeSidecar({ "destroys-data": 0.01 });
+  try {
+    const gate = createRiskGate({ backend: fake.judge, autoAllowBelow: 0.03 });
+    const v = await gate({ toolName: "Bash", input: { command: "ls" }, description: "ls" });
+    if (v.action !== "ask" || !/unavailable/.test(v.reason)) throw new Error(`没训练过的问题: ${v.action} ${v.reason}`);
+  } finally {
+    await fake.close();
+  }
+  const dead = new SidecarJudge({ url: "http://127.0.0.1:9", timeoutMs: 500 });
+  const v = await createRiskGate({ backend: dead, autoAllowBelow: 0.03 })({ toolName: "Bash", input: { command: "ls" }, description: "ls" });
+  if (v.action !== "ask") throw new Error(`sidecar 不在: ${v.action}`);
 });
 
 // ─────────────────────────────────────────────

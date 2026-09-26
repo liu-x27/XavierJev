@@ -36,7 +36,7 @@ tries is a bound of 3.9%, not a rate of zero.
 
 ```bash
 npm install
-npm test                                        # 52 checks, mocked — no model, no key
+npm test                                        # 59 checks, mocked — no model, no key
 npm run eval:risk-gate                          # the gate's dev set, offline: the allow-list is its default
 ```
 
@@ -65,7 +65,7 @@ As a library. It is not on npm; installing from GitHub builds it, and
 [mini-claude-code](https://github.com/liu-x27/mini-claude-code) takes it this way:
 
 ```sh
-npm install github:liu-x27/XavierJev#v0.5.0
+npm install github:liu-x27/XavierJev#v0.6.0
 ```
 
 ```ts
@@ -135,7 +135,11 @@ below. llama3.1:8b has put all of it on Y or N on every call measured.
 gate's four questions from patterns, offline, and says 0.5 — no opinion — to anything
 else. `LlmJudge.probe()` asks a control question at startup, because both ways an endpoint
 fails here are silent: it can accept `logprobs: true`, return 200 and include none, and a
-reasoning model spends its one token on `<think>`.
+reasoning model spends its one token on `<think>`. `SidecarJudge` (`src/sidecar.ts`) asks a
+model you trained on your own labelled commands, served locally by `sidecar/serve.py`, for
+three of the gate's questions and answers `reveals-secret` from a word list; it brings its own
+threshold and canaries, since its probabilities are not on the 8B's scale
+([sidecar/README.md](sidecar/README.md)).
 
 ## Four decisions an agent loop makes
 
@@ -188,6 +192,16 @@ of any input (`maxValueChars`), and a call with a longer one is asked about with
 judge being consulted: a clearance can only cover what was read, and the end of a long
 script is where a cut would hide anything. No labelled command below is longer than 106
 characters, so no number here moves.
+
+**A command's scripts can be shown too, on request.** `readScripts: true` puts the start of
+each local script the command runs — `python /tmp/patch.py`, `node scripts/x.mjs` — into the
+state beside it, when the host passes the working directory (the Claude Code hook does). On
+this machine's traffic, the harm no command-only judge could see was mostly of this kind: a
+scratch script rewriting a tracked file in another repository. It is off by default, since
+every threshold here was measured without it. On 600 of those commands it lifts llama3.1:8b's
+AUC on the ones that run a script from 0.61 to 0.87 without changing a decision at 0.2, and
+does nothing for the judge trained on them, which ranks them at 0.93 without it
+([Round 3](docs/measurements.md#round-3-the-judge-as-a-backend-and-scripts-shown-to-judges)).
 
 `npm run eval:risk-gate` puts hand-labelled shell commands through the gate and reports
 **prompts saved** — safe commands cleared without asking — and **false allows**. There are
@@ -695,20 +709,22 @@ yes/no did.
 
 ## Status
 
-The mock suite — `npm test`, 52 checks, no model — covers the logic that would otherwise
+The mock suite — `npm test`, 59 checks, no model — covers the logic that would otherwise
 fail quietly: the gate's answers returned in question order and decided on the worst; the
 four ways each of the gate and the router can fail (a backend that throws, times out,
 skips a question, or answers outside [0, 1]) landing on asking and on the strong model; the
 allow-list's rejections, including the two it once let through; `choice()` and `rubric()`
 against a stand-in endpoint, renormalised with coverage beside them and an error rather
-than a guess when no label comes back; the snake and Flappy rules; the retry and stop
+than a guess when no label comes back, and averaged over every option order when asked; the snake and Flappy rules; the retry and stop
 judges' thresholds and failure directions; an answer with too little of its token on a yes
 or a no, refused by all four decisions; a command too long to show the judge whole, asked
 about without it, and a request too long to show the router, sent to the strong model; a
 threshold outside (0, 1), a negative timeout or a fractional count, refused when a decision is
 built, since each would otherwise turn it silently into always or never; the gate's self-check, in both directions of
 drift, and its model digest against the recorded one; the answer order reaching the prompt; the Claude Code hook's allow, silence and
-abstentions; and the bounds `eval/stats.ts` puts beside a count.
+abstentions; the scripts a command runs, found and read into the state only when asked; the
+sidecar judge's word list, and its refusals and absence landing on asking; and the bounds
+`eval/stats.ts` puts beside a count.
 
 The tables for the four decisions, the games, throughput and calibration were measured in
 mini-claude-code, with this code and these sets, before the decision layer moved here.
@@ -736,7 +752,7 @@ the third has been read once.
 ## Development
 
 ```bash
-npm test                  # 52 checks, mocked
+npm test                  # 59 checks, mocked
 npm run typecheck         # src, games, eval, test and arena
 npm run lint
 npm run build             # the library, to dist/

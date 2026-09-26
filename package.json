@@ -1,6 +1,6 @@
 {
   "name": "xavierjev",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "A decision layer for agent control flow: yes/no, choice and rubric questions answered from one token's probabilities, and measured against labelled sets",
   "private": true,
   "license": "MIT",
@@ -24,6 +24,7 @@
     "arena": "tsx arena/server.ts",
     "arena:client": "vite arena",
     "claude-code": "tsx integrations/claude-code/server.ts",
+    "sidecar:canaries": "tsx integrations/claude-code/record-canaries.ts",
     "eval:risk-gate": "tsx eval/risk-gate/run.ts",
     "eval:routing": "tsx eval/routing/run.ts",
     "eval:snake": "tsx eval/snake/run.ts",

@@ -65,7 +65,7 @@ export async function decide(
   const command = input.tool_input?.command;
   if (typeof command !== "string" || !command.trim()) return { response: {}, skipped: "no command" };
 
-  const verdict = await gate({ toolName: "Bash", input: { command }, description: command });
+  const verdict = await gate({ toolName: "Bash", input: { command }, description: command, cwd: input.cwd });
   if (verdict.action !== "allow" || options.observe) return { response: {}, command, verdict };
   return {
     response: {

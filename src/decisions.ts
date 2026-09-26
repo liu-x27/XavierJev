@@ -28,6 +28,11 @@ export interface PermissionRequest {
    * approval cards needs this to tell them apart.
    */
   toolUseId?: string | undefined;
+  /**
+   * The working directory the call would run in, when the host knows it. Used only to find the
+   * scripts a command runs (`RiskGateOptions.readScripts`); the judge is not shown it.
+   */
+  cwd?: string | undefined;
 }
 
 /**

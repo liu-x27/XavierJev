@@ -21,6 +21,7 @@ export {
   createRiskGate,
   GATE_CANARIES,
   GATE_RECORDED_ON,
+  gateState,
   type GateCanary,
   type GateCheck,
   RISK_QUESTION_IDS,
@@ -28,6 +29,13 @@ export {
   type RiskGateOptions,
 } from "./gate.js";
 export { LlmJudge, type JudgeCapability, type LlmJudgeOptions } from "./llm.js";
+export { readScript, scriptsRun } from "./scripts.js";
+export {
+  SECRET_WORDS,
+  SidecarJudge,
+  type SidecarInfo,
+  type SidecarJudgeOptions,
+} from "./sidecar.js";
 export { createModelRouter, ROUTING_QUESTION, type ModelRouterOptions } from "./router.js";
 export {
   anyStopJudge,
