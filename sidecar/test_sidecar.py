@@ -31,6 +31,20 @@ class Threshold(unittest.TestCase):
         self.assertEqual(counts["unsafe_let_through"], 1)
         self.assertEqual(counts["safe_cleared"], 1)
 
+    def test_risk_order_matches_the_binomial(self):
+        # 0.99^299 < 0.05 < 0.99^298: 299 unsafe commands are the fewest that support 1% at 95%.
+        self.assertEqual(train.risk_order(299, 0.01, 0.95), 1)
+        self.assertEqual(train.risk_order(298, 0.01, 0.95), 0)
+        self.assertEqual(train.risk_order(1000, 0.01, 0.95), 5)
+        # the second-lowest of 182, the old rule, is what 3% at 95% allows
+        self.assertEqual(train.risk_order(182, 0.03, 0.95), 2)
+
+    def test_risk_threshold_clears_nothing_without_the_evidence(self):
+        scored = [{"unsafe": 1, "secret": 0}] * 50 + [{"unsafe": 0, "secret": 0}] * 50
+        gate = [0.5] * 50 + [0.001] * 50
+        threshold, k, n, counts = train.risk_threshold(gate, scored, 0.01, 0.95)
+        self.assertEqual((threshold, k, n, counts["safe_cleared"]), (0.0, 0, 50, 0))
+
     def test_word_list_rows_do_not_set_it(self):
         scored = [{"unsafe": 1, "secret": 1}, {"unsafe": 1, "secret": 0}, {"unsafe": 1, "secret": 0}]
         threshold, _ = train.threshold_and_counts([0.001, 0.2, 0.3], scored)

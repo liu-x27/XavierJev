@@ -24,6 +24,7 @@ trained on this machine's traffic"; nothing about another machine's is known.
 """
 import argparse
 import json
+import math
 import os
 import random
 import sys
@@ -69,6 +70,35 @@ def threshold_and_counts(gate, scored):
                        "unsafe_let_through": sum(1 for g in unsafe if g < threshold)}
 
 
+def risk_order(n, risk, confidence):
+    """The largest k such that clearing below the k-th lowest of n unsafe calibration scores lets
+    through at most `risk` of new unsafe commands, with probability `confidence`: the largest k
+    with P(Binomial(n, risk) <= k - 1) <= 1 - confidence. 0 when even k = 1 does not hold, which
+    means n unsafe commands are too few to support that risk at that confidence.
+
+    It holds when the scorer was fitted without those n commands and they are exchangeable with
+    the unsafe commands to come; neither is checked here."""
+    k, cdf = 0, 0.0
+    for j in range(n):
+        cdf += math.comb(n, j) * risk**j * (1 - risk) ** (n - j)
+        if cdf > 1 - confidence:
+            break
+        k = j + 1
+    return k
+
+
+def risk_threshold(gate, scored, risk, confidence):
+    """--risk: the threshold at the k-th lowest unsafe score (risk_order), or 0 — clear nothing —
+    when the calibration rows cannot support the target; counted at the saved value."""
+    unsafe = sorted(g for g, r in zip(gate, scored) if r["unsafe"] == 1 and not r["secret"])
+    k = risk_order(len(unsafe), risk, confidence)
+    threshold = json.loads(json.dumps(unsafe[k - 1] if k else 0.0))
+    safe = [g for g, r in zip(gate, scored) if r["unsafe"] == 0]
+    return threshold, k, len(unsafe), {"rows": len(scored), "unsafe": sum(r["unsafe"] for r in scored),
+                                       "safe_cleared": sum(g < threshold for g in safe),
+                                       "unsafe_let_through": sum(1 for g in unsafe if g < threshold)}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--train", required=True)
@@ -84,6 +114,10 @@ def main():
     ap.add_argument("--seed", type=int, default=20260926)
     ap.add_argument("--token-budget", type=int, default=8000)
     ap.add_argument("--resume", action="store_true", help="checkpoint every 100 steps to <out>/resume.pt and continue from it")
+    ap.add_argument("--risk", type=float, help="choose the threshold for this let-through rate among unsafe commands the word "
+                    "list misses, at --confidence, on validation rows the calibration was not fitted on (see risk_order)")
+    ap.add_argument("--confidence", type=float, default=0.95)
+    ap.add_argument("--calib-share", type=float, default=0.5, help="with --risk: the share of validation rows that fit the calibration")
     a = ap.parse_args()
     random.seed(a.seed)
     torch.manual_seed(a.seed)
@@ -219,15 +253,32 @@ def main():
     common.merge_lora(model)
 
     val = read(a.val)
+    # By default the same validation rows fit the calibration and set the threshold. With --risk
+    # they are split: one share fits each question's Platt parameters, and the rest, which the
+    # calibrated scorer never saw, choose the threshold for the stated risk.
+    fit_rows, pick_rows = val, val
+    if a.risk is not None:
+        ordered = val[:]
+        random.Random(a.seed + 1).shuffle(ordered)
+        cut = int(len(ordered) * a.calib_share)
+        fit_rows, pick_rows = ordered[:cut], ordered[cut:]
     cal = {}
     for q, ask in QUESTIONS.items():
-        known = [r for r in val if r["labels"].get(q) in (0, 1)]
+        known = [r for r in fit_rows if r["labels"].get(q) in (0, 1)]
         z = common.margins(tok, model, [common.prompt(tok, r["state"], ask) for r in known])
         cal[q] = {"ask": ask, "platt": platt(z, [r["labels"][q] for r in known])}
-    scored = [r for r in val if r["unsafe"] in (0, 1)]
+    scored = [r for r in pick_rows if r["unsafe"] in (0, 1)]
     per_q = {q: common.margins(tok, model, [common.prompt(tok, r["state"], QUESTIONS[q]) for r in scored]) for q in QUESTIONS}
     gate = [1.0 if r["secret"] else max(common.calibrated(per_q[q][i], cal[q]["platt"]) for q in QUESTIONS) for i, r in enumerate(scored)]
-    threshold, counts = threshold_and_counts(gate, scored)
+    if a.risk is None:
+        threshold, counts = threshold_and_counts(gate, scored)
+        rule = "below the second-lowest validation gate score among unsafe rows the word list does not catch"
+    else:
+        threshold, k, n, counts = risk_threshold(gate, scored, a.risk, a.confidence)
+        rule = (f"below the {k}-th lowest of {n} unsafe calibration scores the word list does not catch: at {a.confidence:.0%} "
+                f"confidence at most {a.risk:.1%} of such commands let through; Platt fitted on {len(fit_rows)} other rows"
+                if k else f"none: {n} unsafe calibration rows cannot support {a.risk:.1%} at {a.confidence:.0%}; clears nothing")
+        print(rule, flush=True)
     calibration = {
         "model": a.model,
         "model_revision": common.model_revision(a.model, model),
@@ -235,7 +286,7 @@ def main():
         "read_scripts": read_scripts,
         "questions": cal,
         "threshold": threshold,
-        "threshold_rule": "below the second-lowest validation gate score among unsafe rows the word list does not catch",
+        "threshold_rule": rule,
         "validation": counts,
         "trained_on": {"pairs": n_main, "extra_pairs": len(rows) - n_main, "extra_weight": a.extra_weight if a.extra else 0, "epochs": a.epochs},
     }

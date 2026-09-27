@@ -43,11 +43,24 @@ the server insists on. Use `--read-scripts` here only if the gate will run with 
 python sidecar/train.py --train train.jsonl --val val.jsonl --out sidecar/run
 #   [--extra other.jsonl --extra-weight 0.25]  commands from elsewhere, at a share of the weight
 #   [--resume]  checkpoint every 100 steps to <out>/resume.pt; run it again after a kill to continue
+#   [--risk 0.03 --confidence 0.95 --calib-share 0.5]  a threshold for a stated let-through rate
 ```
 
 On a machine shared with other work, `--resume` means a training stopped to give memory back, or
 by running out of it, loses at most 100 steps: the adapters, optimizer, schedule, batch order and
 random states are restored, and the checkpoint is deleted once training finishes.
+
+By default the threshold sits below the second-lowest unsafe validation score, on the same rows
+the calibration was fitted on. On one machine's labels that rule put the threshold anywhere from
+0.006 to 0.054 depending on which 600 commands were validation, and the "one let through" it
+shows on validation did not carry to held-out commands (0 of 308 on one split, 7 of 274 on
+another). `--risk` states the target instead: part of the validation rows fit the calibration,
+and the rest, which the calibrated scorer never saw, set the threshold at the k-th lowest unsafe
+score, for the largest k with P(Binomial(n, risk) ≤ k−1) ≤ 1 − confidence. That bounds the
+let-through rate among unsafe commands the word list misses, provided those n are exchangeable
+with the ones to come. It takes data: 1% at 95% needs at least 299 unsafe calibration commands;
+3% needs about 100. With fewer, the threshold is 0 and nothing is cleared — the run says there is
+not enough evidence rather than pick a line anyway.
 
 LoRA (rank 16, every attention and MLP projection) on the model's own Y-against-N answer to each
 question, two epochs; about 25 minutes for 3,500 commands on an RTX 5080. Then the adapters are
