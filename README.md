@@ -684,10 +684,14 @@ ECE of 0.117, and all public tasks at 56.9 weighted. That is the three averages 
 so nothing shipped moves; a caller of `choice()` should know that on half of these tasks its
 answer depended on the order
 ([The order the options are listed in](docs/measurements.md#the-order-the-options-are-listed-in)).
-The weighted 45.0 sits beside the leaderboard's raw Qwen3-8B direct-logit baseline,
-45.7 on that axis (rank 54 of 93 in v1.4.2), which is measured over the full set including a
-sealed half, so they are neighbours rather than a comparison; the trained judges above it do
-better. There is no composite here, because JevBench's composite needs the sealed set. And a
+None of this is a place on the leaderboard, whose numbers are on another scale. Its
+Intelligence axis (v1.4.2) is taken over 534 public decisions, including a judge tier the
+231 public tasks here do not have, blended with 308 sealed ones on which every system falls
+to 25–38%, and cut where public and sealed accuracy differ by more than 25 points; the raw
+Qwen3-8B direct-logit baseline's 45.7 there comes out of all that, and is not a neighbour of
+the 45.0 above. Its composite also weighs calibration, speed and cost — and averaging over
+every order, at 3.5 times the calls, would lose on cost more than it gains elsewhere. Only
+JevBench's maintainers can run the sealed half. And a
 judge that answers every task uniformly scores an ECE of 0.017 on the same 231 tasks —
 calibration read without accuracy says nothing.
 

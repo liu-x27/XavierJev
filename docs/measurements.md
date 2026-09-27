@@ -1164,8 +1164,12 @@ Every answer put all of its first token on a label.
 | all public | 231 | 0.610 | 45.0 weighted | 0.174 | 0.519 |
 
 A uniform answer to every task, for reference: accuracy 0.320, ECE 0.017, weighted above
-chance 1.3. The leaderboard's raw Qwen3-8B direct-logit baseline is 45.7 on the intelligence
-axis in v1.4.2 (rank 54 of 93), over public and sealed tasks together.
+chance 1.3. That is not on the leaderboard's scale: its Intelligence axis (v1.4.2) covers
+534 public decisions, a judge tier among them that these 231 lack, blends in 308 sealed ones
+and cuts it where public and sealed accuracy differ by more than 25 points. The raw
+Qwen3-8B direct-logit baseline's 45.7 there is the result of all of that, so the two numbers
+are not neighbours, whatever they look like. (Until 0.7.1 this section set them side by
+side.)
 
 These are the options in the order JevBench lists them, one call a task. Averaged over every
 order they can be listed in, the same model scores the hard tier at 0.514 (26.7 above chance,
