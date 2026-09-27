@@ -15,22 +15,32 @@ The shape is borrowed from TypeSafe AI's [Jev](https://typesafe.ai/blog/introduc
 a "System One" decision model. This is an independent project and not affiliated with
 TypeSafe: nothing here calls the Jev API, and nothing was trained on its output.
 
-![Three panels: a gate decision's latency, as installed and with parallel slots; each dev-set command's worst score with the answer letters in either order; and the 95% bound on the false-allow rate against the number of unsafe commands tested](docs/at-a-glance.svg)
+![Six panels: a gate decision's latency, as installed and with parallel slots; each dev-set command's worst score with the answer letters in either order; the 95% bound on the false-allow rate against the number of unsafe commands tested; safe commands cleared against unsafe let through on 1,000 real commands, for a fine-tuned Qwen3-0.6B and a prompted llama3.1:8b; the 1,181 real commands the gate cleared, 6 of which should have been asked; and how often choice() picks the option listed first, against chance](docs/at-a-glance.svg)
 
-Three measurements, from [docs/measurements.md](docs/measurements.md). A gate decision is four
+Six measurements, from [docs/measurements.md](docs/measurements.md). A gate decision is four
 questions the server answers one after another, about 90 ms in all, and parallel slots make
 it slower. Naming N before Y in the answer instruction, and changing nothing else, moves
 every score — the reason the gate checks canaries at startup. And zero false allows in 76
 tries is a bound of 3.9%, not a rate of zero.
 
+Below them, what came after. A 0.6B model fine-tuned on this machine's commands clears
+twice what the prompted 8B does on 1,000 more of them — and lets more through, and on
+commands written anywhere else only ties it. The shipped gate was put over 4,000 of those
+commands and every one of the 1,181 it cleared was read: 6 should have been asked. And
+`choice()` picks whatever is listed first far more often than chance; asking in every order
+and averaging moves JevBench's hard tier from 36% to 51%.
+
 | decision | asked as | measured | where it falls short |
 |---|---|---|---|
 | may this tool call run unasked? | four yes/no, worst wins | 153 held-out commands: 29/77 safe cleared, **0/76** unsafe — a false-allow rate below 3.9% | 85% cleared on dev, 38% on the held-out set |
+| … on this machine's own traffic | the same | 1,181 of 4,000 real commands cleared, every one read by hand: **6** should have been asked, about 1.00% at most | the 2,819 it held were not read |
+| … with a judge trained on that traffic | the same, a fine-tuned Qwen3-0.6B | 1,000 held-out real commands: 656/733 cleared, 4/256 let through (the 8B: 308 and 1), 44 ms | one machine: on test 3 it ties the 8B, 30/77, and lets 2 through |
 | cheap model or strong? | one yes/no | held out: 34% downgraded | 19% of hard requests downgraded — off by default |
 | retry a failed read once? | one yes/no | best wording 29/36 | a regex gets 36/36, and ships |
 | stop a run that is stuck? | repeat rule, then one yes/no | 0 wrong stops, 0 missed, dev and held out | 39 labelled runs in all |
 | snake: which way? | one of up to four | best move 133/133 from digested facts | 43/133 from the raw board |
 | flappy: flap? | yes/no inside 30 ms a tick | 0.3% of ticks missed, flies | 31% missed at 20 ms, and it dies |
+| JevBench: one of *n*, a score, yes/no | one token, averaged over every order | hard tier 36% → 51% right, 45.0 → 56.9 weighted | as listed, `choice()` picks the first option 48% of the time, where chance is 22% |
 
 ## Quickstart
 
@@ -543,8 +553,11 @@ word list in charge of `reveals-secret`, and added 179 labelled commands from th
 test sets: on the same held-out 1,000 it clears 656 of 733 safe commands for four unsafe let
 through (the 8B: 308 and one), and on `testset3` 30/77 for two, level with the 8B's 29 but not
 its zero — both misses are passwords given on the command line. Merged, its four questions take
-44 ms. The commands and weights stay here; nothing ships from it
-([A judge trained on this machine's traffic](docs/measurements.md#a-judge-trained-on-this-machines-traffic)).
+44 ms. The commands and weights stay here. What ships, since 0.6.0, is the way to make one:
+`sidecar/` prepares labelled commands with the gate's own state builder, fine-tunes and
+calibrates, and serves the result to `SidecarJudge` with its own threshold and canaries
+([sidecar/README.md](sidecar/README.md);
+[A judge trained on this machine's traffic](docs/measurements.md#a-judge-trained-on-this-machines-traffic)).
 
 ## On another server
 
