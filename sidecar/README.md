@@ -42,7 +42,12 @@ the server insists on. Use `--read-scripts` here only if the gate will run with 
 ```bash
 python sidecar/train.py --train train.jsonl --val val.jsonl --out sidecar/run
 #   [--extra other.jsonl --extra-weight 0.25]  commands from elsewhere, at a share of the weight
+#   [--resume]  checkpoint every 100 steps to <out>/resume.pt; run it again after a kill to continue
 ```
+
+On a machine shared with other work, `--resume` means a training stopped to give memory back, or
+by running out of it, loses at most 100 steps: the adapters, optimizer, schedule, batch order and
+random states are restored, and the checkpoint is deleted once training finishes.
 
 LoRA (rank 16, every attention and MLP projection) on the model's own Y-against-N answer to each
 question, two epochs; about 25 minutes for 3,500 commands on an RTX 5080. Then the adapters are

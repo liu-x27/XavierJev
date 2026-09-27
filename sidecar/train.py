@@ -83,6 +83,7 @@ def main():
     ap.add_argument("--lr", type=float, default=2e-4)
     ap.add_argument("--seed", type=int, default=20260926)
     ap.add_argument("--token-budget", type=int, default=8000)
+    ap.add_argument("--resume", action="store_true", help="checkpoint every 100 steps to <out>/resume.pt and continue from it")
     a = ap.parse_args()
     random.seed(a.seed)
     torch.manual_seed(a.seed)
@@ -156,10 +157,40 @@ def main():
     sched = torch.optim.lr_scheduler.LambdaLR(opt, lambda s: min(1.0, (s + 1) / 50) * max(0.0, 1 - s / steps))
     model.train()
     t0 = time.time()
-    for ep in range(a.epochs):
-        random.shuffle(batches)
-        total = 0.0
+    # --resume: every 100 steps the adapters, optimizer, schedule, batch order and random states
+    # go to <out>/resume.pt, and a run that was stopped continues from there rather than from the
+    # start — on a shared machine a training can be killed to give memory back.
+    resume = os.path.join(a.out, "resume.pt")
+    start_ep, start_step, carried = 0, 0, 0.0
+
+    def checkpoint(ep, step, total):
+        torch.save({"epoch": ep, "step": step, "total": total, "batches": batches,
+                    "adapters": {k: v.detach().cpu() for k, v in model.state_dict().items() if k.endswith((".A", ".B"))},
+                    "opt": opt.state_dict(), "sched": sched.state_dict(), "py_random": random.getstate(),
+                    "torch_random": torch.get_rng_state(), "cuda_random": torch.cuda.get_rng_state_all()}, resume + ".tmp")
+        os.replace(resume + ".tmp", resume)
+
+    if a.resume and os.path.exists(resume):
+        # CPU: the random states must stay CPU tensors; the adapters and optimizer state are
+        # moved to their parameters' device as they load.
+        ck = torch.load(resume, map_location="cpu", weights_only=False)
+        model.load_state_dict(ck["adapters"], strict=False)
+        opt.load_state_dict(ck["opt"])
+        sched.load_state_dict(ck["sched"])
+        batches = ck["batches"]
+        random.setstate(ck["py_random"])
+        torch.set_rng_state(ck["torch_random"])
+        torch.cuda.set_rng_state_all(ck["cuda_random"])
+        start_ep, start_step, carried = ck["epoch"], ck["step"], ck["total"]
+        print(f"resumed at epoch {start_ep + 1} step {start_step}", flush=True)
+    for ep in range(start_ep, a.epochs):
+        mid = ep == start_ep and start_step > 0
+        if not mid:
+            random.shuffle(batches)
+        total = carried if mid else 0.0
         for k, b in enumerate(batches):
+            if mid and k < start_step:
+                continue
             enc = tok([rows[i][0] for i in b], return_tensors="pt", padding=True, add_special_tokens=False).to("cuda")
             lg = model.lm_head(model.model(**enc).last_hidden_state[:, -1, :]).float()
             m = lg[:, y_id] - lg[:, n_id]
@@ -174,8 +205,14 @@ def main():
             total += loss.item()
             if (k + 1) % 200 == 0:
                 print(f"  epoch {ep + 1} step {k + 1}/{len(batches)} loss {total / (k + 1):.4f} {time.time() - t0:.0f}s", flush=True)
+            if a.resume and (k + 1) % 100 == 0 and k + 1 < len(batches):
+                checkpoint(ep, k + 1, total)
         print(f"epoch {ep + 1}: loss {total / len(batches):.4f}, {time.time() - t0:.0f}s", flush=True)
+        if a.resume:
+            checkpoint(ep + 1, 0, 0.0)
 
+    if a.resume and os.path.exists(resume):
+        os.remove(resume)
     adapter = os.path.join(a.out, "adapter.pt")
     torch.save({k: v.detach().cpu() for k, v in model.state_dict().items() if k.endswith(".A") or k.endswith(".B")}, adapter)
     model.eval()
