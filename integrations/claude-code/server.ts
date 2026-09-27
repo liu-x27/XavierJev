@@ -134,6 +134,11 @@ app.post("/claude-code/permission-request", async (req, res) => {
       allowed: decision.response.hookSpecificOutput !== undefined,
       observe,
       ms: Date.now() - started,
+      // Which judge, and at which threshold, so records from before and after a change of judge
+      // are never read as one run.
+      judge: judge.name,
+      digest: check.identity?.digest,
+      threshold,
     })}\n`,
   );
   res.json(decision.response);
