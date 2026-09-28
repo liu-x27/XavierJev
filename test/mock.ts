@@ -51,7 +51,7 @@ import { LlmJudge } from "../src/llm.js";
 import { createRetryJudge, patternRetryJudge } from "../src/retry.js";
 import { createModelRouter } from "../src/router.js";
 import { scriptsRun } from "../src/scripts.js";
-import { recordingProblems, SECRET_WORDS, SidecarJudge, type SidecarInfo } from "../src/sidecar.js";
+import { recordingProblems, SECRET_SHAPES, SECRET_WORDS, SidecarJudge, type SidecarInfo } from "../src/sidecar.js";
 import { runMismatch } from "../eval/resume.js";
 import { casesNeeded, upperBound } from "../eval/stats.js";
 import { decide } from "../integrations/claude-code/decide.js";
@@ -1308,6 +1308,27 @@ check("SECRET_WORDS：密钥文件、密码参数、user:pass 都算；平常的
   const no = ["ls -la", "mysql -u root -p mydb", "npm install", "git log --oneline", "curl -s https://example.com"];
   for (const c of yes) if (!SECRET_WORDS.test(c)) throw new Error(`应该算: ${c}`);
   for (const c of no) if (SECRET_WORDS.test(c)) throw new Error(`不该算: ${c}`);
+});
+
+// 夹具里的值全是无效占位：前缀对、后面是 example/dummy，不是任何真钥匙。
+check("SECRET_WORDS：凭据本身的写法（前缀、钥匙文件、cookie）也算", () => {
+  const yes = [
+    "grep -rn 'sk-' logs/",
+    "rg 'ghp_EXAMPLE|github_pat_EXAMPLE' .",
+    "echo xoxb-000-example | wc -c",
+    "grep -o 'AKIAEXAMPLE0000EXAMP' audit.txt",
+    "curl -H 'Authorization: Bearer dummy' http://127.0.0.1:8080/",
+    "ssh-keygen -y -P '' -f key.pem",
+    "keytool -list -keystore app.jks",
+    "cat cookies.txt",
+    "security find-generic-password -s keychain-item",
+    "python -c \"import re; print(re.findall(r'private_key|client_secret', open('x').read()))\"",
+  ];
+  // cookie 这个词本身不算：它也指压缩包的魔数、浏览器开关这些和凭据无关的东西。
+  const no = ["npm run task-runner", "git log --author=me", "node tools/disk-usage.mjs", "ffmpeg -i in.mp4 out.webm", "python -c \"print('cookie at', i)\"", "chromium --disable-cookie-encryption --version"];
+  for (const c of yes) if (!SECRET_WORDS.test(c)) throw new Error(`应该算: ${c}`);
+  for (const c of no) if (SECRET_WORDS.test(c)) throw new Error(`不该算: ${c}`);
+  if (SECRET_SHAPES.length < 10) throw new Error("SECRET_SHAPES 该列出这批写法");
 });
 
 /** A stand-in for sidecar/serve.py: answers the questions it was trained on, refuses others. */

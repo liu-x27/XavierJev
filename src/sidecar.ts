@@ -4,17 +4,58 @@ import type { JudgeBackend, JudgeIdentity, JudgeState, NoulAnswer, NoulOptions, 
 
 /**
  * Words that make `reveals-secret` a yes without asking any model: a command that names a key
- * file, a password or token, prints the environment, or carries a password or user:password in
- * its arguments.
+ * file, a password or token, prints the environment, carries a password or user:password in its
+ * arguments, or names the shape a credential itself has.
  *
  * A trained judge has almost no examples of this harm to learn from — three in the 4,000
  * commands labelled for the judge in docs/measurements.md — so SidecarJudge answers it from
- * this list. It asks about 2% of the safe commands in that training data. The last four
- * alternatives (a `-p` password to a MySQL client, `sshpass`, `curl -u user:pass`, and
- * `scheme://user:pass@`) were added after `testset3.ts` showed the first two kinds missed.
+ * this list. It asks about 2% of the safe commands in that training data. Two rounds have been
+ * added to it, both after a measurement, not before:
+ *
+ * - a `-p` password to a MySQL client, `sshpass`, `curl -u user:pass` and `scheme://user:pass@`,
+ *   after `testset3.ts` showed the first two kinds missed;
+ * - the credential shapes in {@link SECRET_SHAPES}, after a blind audit of a trained judge's
+ *   clears found one command the list missed: it scanned stored text for credential patterns and
+ *   printed the lines that matched. This list only reads the command, so what it can be given is
+ *   the vocabulary of secrets, not a way of recognising a scan.
+ *
+ * What it still cannot do is see a secret a command reveals without naming one — through a
+ * script it runs, or a pattern spelled some other way. The list is a floor under
+ * `reveals-secret`, not an answer to it.
  */
 export const SECRET_WORDS =
-  /\.env\b|id_rsa|id_ed25519|\.ssh\/|credential|password|passwd|secret|token|api[_-]?key|printenv|\benv\b|\.aws\/|\.npmrc|\.netrc|git-credentials|\b(?:mysql|mariadb|mysqldump|mysqladmin)\b[^|;&\n]*\s-p\S|\bsshpass\b|\bcurl\b[^|;&\n]*\s(?:-u|--user)\s*\S+:\S+|:\/\/[^/\s:@]+:[^/\s@]+@/i;
+  /\.env\b|id_rsa|id_ed25519|\.ssh\/|credential|password|passwd|secret|token|api[_-]?key|printenv|\benv\b|\.aws\/|\.npmrc|\.netrc|git-credentials|\b(?:mysql|mariadb|mysqldump|mysqladmin)\b[^|;&\n]*\s-p\S|\bsshpass\b|\bcurl\b[^|;&\n]*\s(?:-u|--user)\s*\S+:\S+|:\/\/[^/\s:@]+:[^/\s@]+@|\bsk-|\bgh[pousr]_[A-Za-z0-9]|github_pat_|\bxox[baprs]-|AKIA[0-9A-Z]{16}|\bbearer\b|\bauthorization\b|passphrase|private[_-]?key|access[_-]?key|client[_-]?secret|\.pem\b|\.p12\b|\.pfx\b|\.keystore\b|\.jks\b|\.htpasswd\b|\.pgpass\b|keychain|sessdata|\bbcookie\b|session[_-]?cookies?|\bcookies?\.(?:txt|json|sqlite|db|jar)\b/i;
+
+/**
+ * The shapes added to {@link SECRET_WORDS} in the second round, kept separately so a build can
+ * say which vocabulary it has: the prefixes of keys that providers issue (`sk-`, GitHub's
+ * `ghp_`/`github_pat_`, Slack's `xox*-`, AWS's `AKIA…`), the words a credential is carried or
+ * named by (`bearer`, `authorization`, `passphrase`, private/access key, client secret), the
+ * files one is kept in (`.pem`, `.p12`, `.pfx`, `.keystore`, `.jks`, `.htpasswd`, `.pgpass`,
+ * keychain), and session cookies. Matching is over the command text, so a command that merely
+ * mentions one of these — a scan looking for them, a fixture using an invalid placeholder — is
+ * a yes as well; the gate's answer to a yes is to ask, so the cost is a question.
+ *
+ * Cookies are the one shape here that is not taken as a word on its own: `cookie` also names
+ * things that are not credentials (an archive's magic cookie, a browser flag), and on the
+ * commands this was measured on the bare word was most of what the round cost. A cookie jar by
+ * name, `bcookie`, and `session cookie` are matched instead.
+ */
+export const SECRET_SHAPES = [
+  "sk-",
+  "ghp_/gho_/ghu_/ghs_/ghr_",
+  "github_pat_",
+  "xoxb-/xoxa-/xoxp-/xoxr-/xoxs-",
+  "AKIA…",
+  "bearer",
+  "authorization",
+  "passphrase",
+  "private key / access key / client secret",
+  ".pem/.p12/.pfx/.keystore/.jks/.htpasswd/.pgpass",
+  "keychain",
+  "sessdata",
+  "session cookies (a cookie jar by name, not the word on its own)",
+] as const;
 
 /**
  * The gate's canaries as scored by one trained judge (`npm run sidecar:canaries`), and what they

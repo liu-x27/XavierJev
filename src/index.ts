@@ -33,6 +33,7 @@ export { readScript, scriptsRun } from "./scripts.js";
 export {
   type CanaryRecording,
   recordingProblems,
+  SECRET_SHAPES,
   SECRET_WORDS,
   SidecarJudge,
   type SidecarInfo,
