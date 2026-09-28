@@ -12,7 +12,11 @@ weight.
 After training the adapters are merged into the weights, the way serve.py runs them, and only
 then is anything calibrated: each question's margin gets a Platt fit on the validation rows, and
 the threshold is set on validation too — below the second-lowest gate score among the unsafe
-validation rows the word list does not already catch (one let through on validation). Written
+validation rows the word list does not already catch (one let through on validation). `--calib`
+fits the Platt parameters on rows held out of training instead, which leaves every validation
+row free to accept a stated risk: with `--risk`, how small a rate the threshold can be held to
+is decided by how many unsafe rows are left to place it, and spending half of them on the
+calibration is what usually costs the target. Written
 to --out: adapter.pt (the adapters, not merged) and calibration.json (questions with their exact
 wording and Platt parameters, the threshold and how it was chosen, the base model's revision,
 and whether prepare.ts showed the judge scripts, from its .meta.json). The questions are
@@ -68,6 +72,14 @@ def threshold_and_counts(gate, scored):
     return threshold, {"rows": len(scored), "unsafe": sum(r["unsafe"] for r in scored),
                        "safe_cleared": sum(g < threshold for g in safe),
                        "unsafe_let_through": sum(1 for g in unsafe if g < threshold)}
+
+
+def shares_rows(fit_rows, train_rows):
+    """Whether any row fitting the calibration is also a training row, compared on the state the
+    judge is shown. A Platt fitted on rows the judge was pulled towards is not a fit on its
+    behaviour; --calib exists to avoid exactly that, so it is checked rather than assumed."""
+    seen = {json.dumps(r["state"], sort_keys=True) for r in train_rows}
+    return any(json.dumps(r["state"], sort_keys=True) in seen for r in fit_rows)
 
 
 def risk_order(n, risk, confidence):
@@ -129,6 +141,8 @@ def main():
                     "list misses, at --confidence, on validation rows the calibration was not fitted on (see risk_order)")
     ap.add_argument("--confidence", type=float, default=0.95)
     ap.add_argument("--calib-share", type=float, default=0.5, help="with --risk: the share of validation rows that fit the calibration")
+    ap.add_argument("--calib", help="rows to fit the calibration on, held out of training, so that every validation "
+                    "row is left to accept a risk; prepared like --train and disjoint from it")
     a = ap.parse_args()
     random.seed(a.seed)
     torch.manual_seed(a.seed)
@@ -137,15 +151,15 @@ def main():
     # How prepare.ts built the states: with or without the scripts a command runs. The hook
     # compares it with how the judge is being run.
     metas = []
-    for path in (a.train, a.val):
+    for path in (a.train, a.val, a.calib) if a.calib else (a.train, a.val):
         meta_path = path[: -len(".jsonl")] + ".meta.json"
         if os.path.exists(meta_path):
             with open(meta_path, encoding="utf-8") as f:
                 metas.append(json.load(f))
         else:
             metas.append(None)
-    if metas[0] and metas[1] and metas[0].get("readScripts") != metas[1].get("readScripts"):
-        sys.exit("--train and --val were prepared differently: one with --read-scripts, one without")
+    if len({m.get("readScripts") for m in metas if m}) > 1:
+        sys.exit("the prepared files disagree on --read-scripts: one was built with the scripts a command runs, another without")
     read_scripts = metas[0].get("readScripts") if metas[0] else None
     if read_scripts is None:
         print("warning: no <train>.meta.json from prepare.ts, so calibration.json cannot say whether scripts were shown", flush=True)
@@ -266,9 +280,15 @@ def main():
     val = read(a.val)
     # By default the same validation rows fit the calibration and set the threshold. With --risk
     # they are split: one share fits each question's Platt parameters, and the rest, which the
-    # calibrated scorer never saw, choose the threshold for the stated risk.
+    # calibrated scorer never saw, choose the threshold for the stated risk. With --calib the
+    # split is not needed — rows held out of training fit the calibration, and every validation
+    # row is left to accept the risk, which is what the number of unsafe rows there buys.
     fit_rows, pick_rows = val, val
-    if a.risk is not None:
+    if a.calib:
+        fit_rows = read(a.calib)
+        if shares_rows(fit_rows, read(a.train)):
+            sys.exit("--calib shares rows with --train: the calibration would be fitted on rows the judge trained on")
+    elif a.risk is not None:
         ordered = val[:]
         random.Random(a.seed + 1).shuffle(ordered)
         cut = int(len(ordered) * a.calib_share)
@@ -287,7 +307,8 @@ def main():
     else:
         threshold, k, n, counts = risk_threshold(gate, scored, a.risk, a.confidence)
         rule = (f"below the {k}-th lowest of {n} unsafe calibration scores the word list does not catch: at {a.confidence:.0%} "
-                f"confidence at most {a.risk:.1%} of such commands let through; Platt fitted on {len(fit_rows)} other rows"
+                f"confidence at most {a.risk:.1%} of such commands let through; Platt fitted on {len(fit_rows)} "
+                + ("rows held out of training" if a.calib else "other validation rows")
                 if k else f"none: {n} unsafe calibration rows cannot support {a.risk:.1%} at {a.confidence:.0%}; "
                 + (f"the smallest they support is {smallest_risk(n, a.confidence):.1%}" if smallest_risk(n, a.confidence)
                    else "they support no rate under 50%") + "; clears nothing")
@@ -301,6 +322,7 @@ def main():
         "threshold": threshold,
         "threshold_rule": rule,
         "validation": counts,
+        "calibrated_on": ("rows held out of training" if a.calib else "the validation rows"),
         "trained_on": {"pairs": n_main, "extra_pairs": len(rows) - n_main, "extra_weight": a.extra_weight if a.extra else 0, "epochs": a.epochs},
     }
     with open(os.path.join(a.out, "calibration.json"), "w", encoding="utf-8") as f:

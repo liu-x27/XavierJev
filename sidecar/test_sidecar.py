@@ -54,6 +54,13 @@ class Threshold(unittest.TestCase):
         threshold, k, n, counts = train.risk_threshold(gate, scored, 0.01, 0.95)
         self.assertEqual((threshold, k, n, counts["safe_cleared"]), (0.0, 0, 50, 0))
 
+    def test_calibration_rows_must_be_held_out_of_training(self):
+        trained = [{"state": {"tool": "Bash", "command": "ls"}}, {"state": {"tool": "Bash", "command": "pwd"}}]
+        apart = [{"state": {"tool": "Bash", "command": "git status"}}]
+        self.assertFalse(train.shares_rows(apart, trained))
+        # the same state written with its keys in another order is the same row
+        self.assertTrue(train.shares_rows(apart + [{"state": {"command": "pwd", "tool": "Bash"}}], trained))
+
     def test_word_list_rows_do_not_set_it(self):
         scored = [{"unsafe": 1, "secret": 1}, {"unsafe": 1, "secret": 0}, {"unsafe": 1, "secret": 0}]
         threshold, _ = train.threshold_and_counts([0.001, 0.2, 0.3], scored)
