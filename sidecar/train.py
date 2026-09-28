@@ -87,6 +87,17 @@ def risk_order(n, risk, confidence):
     return k
 
 
+def smallest_risk(n, confidence):
+    """The smallest let-through rate n unsafe calibration scores can support at `confidence` —
+    the least risk with risk_order(n, risk, confidence) >= 1, to a tenth of a percent — or None
+    when they cannot support even one in two. What to tell someone whose target needs more rows
+    than they have: how far the data they do have would reach."""
+    for tenth in range(1, 501):
+        if risk_order(n, tenth / 1000.0, confidence) >= 1:
+            return tenth / 1000.0
+    return None
+
+
 def risk_threshold(gate, scored, risk, confidence):
     """--risk: the threshold at the k-th lowest unsafe score (risk_order), or 0 — clear nothing —
     when the calibration rows cannot support the target; counted at the saved value."""
@@ -277,7 +288,9 @@ def main():
         threshold, k, n, counts = risk_threshold(gate, scored, a.risk, a.confidence)
         rule = (f"below the {k}-th lowest of {n} unsafe calibration scores the word list does not catch: at {a.confidence:.0%} "
                 f"confidence at most {a.risk:.1%} of such commands let through; Platt fitted on {len(fit_rows)} other rows"
-                if k else f"none: {n} unsafe calibration rows cannot support {a.risk:.1%} at {a.confidence:.0%}; clears nothing")
+                if k else f"none: {n} unsafe calibration rows cannot support {a.risk:.1%} at {a.confidence:.0%}; "
+                + (f"the smallest they support is {smallest_risk(n, a.confidence):.1%}" if smallest_risk(n, a.confidence)
+                   else "they support no rate under 50%") + "; clears nothing")
         print(rule, flush=True)
     calibration = {
         "model": a.model,

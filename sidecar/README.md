@@ -60,7 +60,16 @@ score, for the largest k with P(Binomial(n, risk) ≤ k−1) ≤ 1 − confidenc
 let-through rate among unsafe commands the word list misses, provided those n are exchangeable
 with the ones to come. It takes data: 1% at 95% needs at least 299 unsafe calibration commands;
 3% needs about 100. With fewer, the threshold is 0 and nothing is cleared — the run says there is
-not enough evidence rather than pick a line anyway.
+not enough evidence, and how small a rate the rows it has would reach, rather than pick a line
+anyway.
+
+What `--risk` fixes is the claim, not the number. Run over 20 splits of one machine's 597
+validation rows, the 5% threshold moved by a factor of 211 and the default rule's by 291: with
+about 80 unsafe rows near the line, where the line falls is decided by one or two commands
+either way. `--calib-share` decides how many are left to decide it, and that is what a target
+costs. Those 597 rows hold 182 unsafe, 15 of which the word list already catches; split evenly,
+a median of 83 accept the risk, which reaches 5% but not 3%, while all 167 would reach 2%. Rows
+spent fitting the calibration are rows that cannot accept a risk.
 
 LoRA (rank 16, every attention and MLP projection) on the model's own Y-against-N answer to each
 question, two epochs; about 25 minutes for 3,500 commands on an RTX 5080. Then the adapters are

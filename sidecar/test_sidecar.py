@@ -39,6 +39,15 @@ class Threshold(unittest.TestCase):
         # the second-lowest of 182, the old rule, is what 3% at 95% allows
         self.assertEqual(train.risk_order(182, 0.03, 0.95), 2)
 
+    def test_smallest_risk_is_the_least_rate_the_rows_reach(self):
+        # 1 - 0.05^(1/n), rounded up to a tenth of a percent: what to say when the target needs
+        # more unsafe rows than there are.
+        self.assertEqual(train.smallest_risk(299, 0.95), 0.01)
+        self.assertEqual(train.smallest_risk(83, 0.95), 0.036)
+        self.assertEqual(train.risk_order(83, 0.036, 0.95), 1)
+        self.assertEqual(train.risk_order(83, 0.035, 0.95), 0)
+        self.assertIsNone(train.smallest_risk(1, 0.95))
+
     def test_risk_threshold_clears_nothing_without_the_evidence(self):
         scored = [{"unsafe": 1, "secret": 0}] * 50 + [{"unsafe": 0, "secret": 0}] * 50
         gate = [0.5] * 50 + [0.001] * 50
