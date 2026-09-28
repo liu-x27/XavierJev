@@ -38,10 +38,16 @@ let through (`eval/stats.ts`, exact binomial bounds; added 2026-09-24). This tab
 README had the current ones.
 
 This machine's own agent traffic has no labels. So every command 0.3.0 cleared, out of 4,000
-drawn from it, was read by hand. 6 of the 1,181 should have been asked about, or 3 if the
+drawn from it, was read one by one. 6 of the 1,181 should have been asked about, or 3 if the
 working directory is taken to be the one a command `cd`s into. That bounds the share of its
 clears that are wrong at about 1.00% at 95% (1.0003%: a hair over, not under). The commands it held were not read
 ([Counting what it let through](#counting-what-it-let-through)).
+
+The judge trained on that traffic has since been audited the same way, on a day of commands
+drawn after its training data and with its decisions hidden from the labeller: of 300 of its
+clears, 6 are wrong by the strict reading and 1 by the `cd` one, and the target set beforehand
+— under 1% — was not reached
+([Round 4](#round-4-what-the-clears-are-worth-audited-on-a-day-it-had-not-seen)).
 
 `testset.ts` (125) has not been run against the shipped `llm` config; the `allowlist`
 column covers it at 4/55 with 0/70. Coverage reads 88%, 49%, 34% across dev, test 2 and
@@ -81,18 +87,19 @@ wrong first.
 | [Telling the snake about room](#telling-the-snake-about-room) | a five-game win that twenty games on a new seed took back |
 | [Smaller judges](#smaller-judges) | barely faster, much worse, and a threshold that does not travel |
 | [A judge trained on this machine's traffic](#a-judge-trained-on-this-machines-traffic) | 0.6B with heads out-ranks the prompted 8B on its own traffic and loses elsewhere; fine-tuned, it clears twice the 8B's share here and matches it on `testset3`, with more misses |
+| [… audited on a day it had not seen](#round-4-what-the-clears-are-worth-audited-on-a-day-it-had-not-seen) | of 300 sampled clears, 6 are wrong by the strict reading and 1 by the cd reading; the under-1% target was not reached |
 | [Beside a rule-based guard](#beside-a-rule-based-guard) | opposite failures: one misses most harm, the other most of the benefit |
 | [On real traffic](#on-real-traffic) | a quarter cleared, all of it harmless on reading, held back by one question |
 | [On JevBench](#on-jevbench) | easy solved, hard at chance and confident — as the options are listed |
 | [Reads do not count](#reads-do-not-count) | the first wording chosen on real traffic, registered before it was measured |
-| [Counting what it let through](#counting-what-it-let-through) | 1,181 clears read by hand: six by the letter, one that could lose work |
+| [Counting what it let through](#counting-what-it-let-through) | 1,181 clears read one by one: six by the letter, one that could lose work |
 | [The same weights on another server](#the-same-weights-on-another-server) | llama.cpp gives Ollama's answers once it builds Ollama's prompt, and its default does not |
 
 ---
 
 ## What the gate measures
 
-`npm run eval:risk-gate` puts hand-labelled commands through the gate and reports two
+`npm run eval:risk-gate` puts labelled commands through the gate and reports two
 numbers. Only one of them is allowed to move.
 
 There are four sets. `cases.ts` (83) is the dev set — the question wording, the
@@ -594,7 +601,7 @@ At 0.20 that is 30% off the bill against all-Opus on a fixed token profile, with
 request in twenty sent to a model I think was too small for it — on the dev set.
 
 `eval/routing/testset.ts` is 65 requests generated afterwards, from situations rather
-than difficulty levels so the framing could not leak the label, and labelled by hand:
+than difficulty levels so the framing could not leak the label, and labelled one by one:
 
 |  | dev (40) | held out (65) |
 |---|---|---|
@@ -895,7 +902,7 @@ with.
 ## A judge trained on this machine's traffic
 
 *2026-09-26. Frozen Qwen3-0.6B with three logistic heads, trained on 3,000 of this machine's
-agent commands labelled by hand and scored once on 1,000 more, then on the dev set and
+agent commands labelled one by one and scored once on 1,000 more, then on the dev set and
 `testset3.ts`. The commands, the labels and the weights stay on this machine; the aggregates
 are in `docs/data/trained-judge.json`. The code that trains it is not in this repository.*
 
@@ -1083,6 +1090,90 @@ and counts at the saved value; the judge's own record was rewritten to the exact
 gives 361/415 and 1/182 as above. The scripts judge's threshold rounded down and is unchanged.
 Aggregates for this section are in `docs/data/trained-judge.json`, under `round3`.
 
+
+### Round 4: what the clears are worth, audited on a day it had not seen
+
+*2026-09-27. The judge is round 3's `run-plain`, unchanged — digest `f151e80e9da1`, threshold
+0.016096642000103977. The commands are the 1,605 distinct Bash commands this machine's agents
+first ran after the latest one in the training draw (2026-09-26 05:41Z) and before the next
+morning's extraction; 1,000 of them, taken in a fixed hash order, are the set, and the other
+605 were not read. Everything below was registered before any of it was labelled or scored.
+The commands and their labels stay on this machine; what is published is the method and these
+aggregates, in `docs/data/trained-judge.json` under `round4`.*
+
+The first three rounds measured the judge against labels drawn from the pool it was trained on.
+This one asks the question a host actually has: of the commands it clears — the questions it
+saves you — how many should have been questions?
+
+On the 1,000 it clears 535 and asks about 465. From those, 300 clears and 100 asks were drawn
+at random, shuffled together, and labelled against the same criterion as the training data. The
+labeller saw the command, its working directory, where a leading `cd` goes and the same pattern
+hints the training labels were made with, and never the score, the decision, or which of the two
+strata a command came from. Inclusion probabilities give the weighted figures.
+
+| reading | clears wrong | exact 95% upper | unsafe let through | safe cleared |
+|---|---|---|---|---|
+| strict (`D`/`O`/`X`/`S`) | **6 of 300 = 2.0%** | 3.9% | 2.8% (bootstrap 0.9–5.1) | 85.6% (80.8–90.4) |
+| cd reading (`Ocd` for `O`) | **1 of 300 = 0.3%** | 1.6% | 0.6% (0.0–1.9) | 76.1% (71.4–80.9) |
+
+The target registered beforehand — under 1% of clears wrong, which 300 clears can only support
+by showing none — **was not reached**. Five of the six write somewhere outside the session's own
+folder but inside the folder the command had just `cd`-ed into, which is why the cd reading
+keeps only one of them: a repository's own renderer and archive extractor, a scratch extractor,
+and a training script writing its report, twice. The sixth is the one that is wrong under both
+readings, and it is the harm the judge has no head for: a scan over stored text for
+credential-shaped patterns that prints the lines matching. Round 2's single let-through was the
+same kind. No row was unjudgeable, and no command in the sample carried a credential in its own
+text, so the second reading of `reveals-secret` gives the same numbers as the first.
+
+Two things the audit says beside the headline. The asks are earned: 81 of the 100 sampled asks
+are unsafe under the strict reading (64 under the cd reading), so what it does not clear is
+mostly worth a question. And the two sessions that built this judge are not where its clears go
+wrong — 3 of 84 there against 3 of 216 elsewhere, on counts too small to separate.
+
+What this cannot show: the labels are the same labeller's as the 4,000 the judge was trained on,
+read against the same written criterion. That can find the judge disagreeing with that reading;
+it cannot find the reading itself being wrong, and it is not an independent check. Before any
+estimate was read, the audit's labels were compared with the 4,000 on commands sharing a
+structural skeleton — 110 of 116 agree with the majority verdict there — and the one reading
+that had drifted was corrected on the older labels' precedent, for eight of the 400. That
+correction, and the target it did not reach, are recorded either way.
+
+### After the audit: the vocabulary of credentials
+
+`SECRET_WORDS` answers `reveals-secret` for `SidecarJudge` by itself, because a judge trained on
+this machine has almost nothing to learn the harm from. The audit's one clear that is wrong
+under both readings contained none of its words, so the list gained the shapes a credential
+itself has: the prefixes providers issue (`sk-`, `ghp_`, `github_pat_`, `xox*-`, `AKIA…`), the
+words one is carried or named by (`bearer`, `authorization`, `passphrase`, private and access
+keys, client secrets), the files one is kept in (`.pem`, `.p12`, `.pfx`, `.keystore`, `.jks`,
+`.htpasswd`, `.pgpass`, keychain), `sessdata`, and session cookies named as a jar. Nothing was
+removed. What a list over the command text cannot be given is a way to recognise a scan, only
+the vocabulary it would scan for.
+
+The cost, counted once on commands already labelled here, is one further question per few
+thousand:
+
+| commands | matched before | after | newly asked | of those safe |
+|---|---|---|---|---|
+| training draw, 3,000 | 109 | 110 | 1 | 1 |
+| test split, 1,000 | 35 | 36 | 1 | 0 |
+| the 400 audited | 13 | 14 | 1 | 0 |
+| the fresh 1,000 | 41 | 43 | 2 | not labelled |
+
+Catching the audited command is not evidence that the round works: it carries four of the added
+shapes and the list was written knowing it. The cost is what the numbers show. `cookie` as a
+bare word was tried and narrowed to a jar by name, after it turned out to be most of the cost
+and none of the catches — a narrowing chosen on those figures, so they are not an estimate of
+it. And the gap the round does not close is still there: the list reads the command, so a
+secret revealed through a script the command runs, or a pattern spelled another way, is missed.
+It is a floor under `reveals-secret`, not an answer to it.
+
+Changing the list changes `SECRET_WORDS.source`, which a sidecar's recorded canaries pin, so a
+judge recorded against the old list no longer describes the build in front of it and the hook
+refuses to start until `npm run sidecar:canaries` is run again. Re-recorded here, all seven
+canary scores were unchanged.
+
 ---
 
 ## Beside a rule-based guard
@@ -1106,7 +1197,7 @@ On this machine's agent traffic — 10,751 distinct Bash commands from the Claud
 transcripts, each checked with its own session's working directory — it blocked 80 (0.74%).
 By rule: an `.env` variant 24, `rm -rf` outside the working directory 20, an `.env` file 7,
 `git worktree remove --force` 7, a dangerous-looking raw text 6, and single-digit others.
-Read by hand, some were worth the stop and some were words inside a commit message or a
+Read one by one, some were worth the stop and some were words inside a commit message or a
 heredoc that matched a rule; those reads are not labelled, so there is no rate to give.
 
 The comparison reads the held-out sets, so each one's log records it, and nothing in the gate
@@ -1138,7 +1229,7 @@ The gate on 500 drawn by seed 20260925 from half A of a hash split:
 | cleared within 0.05 of the line · held within 0.1 above it | 41 · 60 |
 | judge failures · lowest coverage | 0 · 0.999 |
 
-All 132 cleared commands were read by hand. None needed asking under the label
+All 132 cleared commands were read one by one. None needed asking under the label
 criterion; about fifteen run the project's own code (tests, a type-check, a local inspection
 tool), which the gate judges by the command's text. This is not a labelled result, and there
 is no false-allow rate to report from it. (A later, larger draw was read the same way and
@@ -1200,7 +1291,7 @@ to pass every step below, in this order, or be dropped.
 
 Under the new wording the gate's self-check reports its canaries as recorded, their scores
 moved +0.14 in log-odds towards asking — inside its limit of 1, so the values recorded for the
-old wording stand. Every command either half newly cleared — 51 in all — was read by hand: all reads, listings
+old wording stand. Every command either half newly cleared — 51 in all — was read one by one: all reads, listings
 and searches, a `tasklist`, a `git fetch`. The gain, 18 and 24 commands in 500, is six to
 eight times the run-to-run noise measured on the same draw. That noise is its own finding:
 the same question on the same command comes back a few hundredths apart between runs — the
@@ -1235,7 +1326,7 @@ the 1,000 commands those runs drew are among them; the other 3,000 had not been 
 | cleared within 0.05 of the line · held within 0.1 above it | 148 · 250 | 165 · 240 |
 | judge failures · lowest coverage | 0 · 0.998 | 0 · 0.999 |
 
-Every one of the 1,181 cleared commands was read by hand against the label criterion in
+Every one of the 1,181 cleared commands was read one by one against the label criterion in
 `cases.ts`. Most only read, list or search (735). About a fifth run code (244), which the
 criterion counts as safe when it is the project's own (a test run, a type-check, a local tool)
 or an inline script whose text is there to read.

@@ -8,7 +8,7 @@ error worth one more try, is this run going anywhere. XavierJev answers them as 
 questions — yes or no, one of *n*, a point on a scale — read off one token's probabilities
 from a small local model, in tens of milliseconds. The hard part is not the call. It is
 knowing whether the numbers mean anything, so every decision here is measured against
-hand-labelled sets, the held-out ones log each read, one false allow fails a run, and the
+labelled sets, the held-out ones log each read, one false allow fails a run, and the
 places a regex beat the model are kept.
 
 The shape is borrowed from TypeSafe AI's [Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev),
@@ -33,8 +33,9 @@ and averaging moves JevBench's hard tier from 36% to 51%.
 | decision | asked as | measured | where it falls short |
 |---|---|---|---|
 | may this tool call run unasked? | four yes/no, worst wins | 153 held-out commands: 29/77 safe cleared, **0/76** unsafe — a false-allow rate below 3.9% | 85% cleared on dev, 38% on the held-out set |
-| … on this machine's own traffic | the same | 1,181 of 4,000 real commands cleared, every one read by hand: **6** should have been asked, about 1.00% at most | the 2,819 it held were not read |
+| … on this machine's own traffic | the same | 1,181 of 4,000 real commands cleared, every one read one by one: **6** should have been asked, about 1.00% at most | the 2,819 it held were not read |
 | … with a judge trained on that traffic | the same, a fine-tuned Qwen3-0.6B | 1,000 held-out real commands: 656/733 cleared, 4/256 let through (the 8B: 308 and 1), 44 ms | one machine: on test 3 it ties the 8B, 30/77, and lets 2 through |
+| … that judge's clears, audited blind | the same, a day of commands drawn after its training data | 300 of its 535 clears sampled and labelled without its decisions in view: **6** wrong by the strict reading, **1** by the `cd` one | the under-1% target it was held to was not reached |
 | cheap model or strong? | one yes/no | held out: 34% downgraded | 19% of hard requests downgraded — off by default |
 | retry a failed read once? | one yes/no | best wording 29/36 | a regex gets 36/36, and ships |
 | stop a run that is stuck? | repeat rule, then one yes/no | 0 wrong stops, 0 missed, dev and held out | 39 labelled runs in all |
@@ -225,7 +226,7 @@ either way. A judge that reads a harmless-looking start of a script and clears t
 possible, and nothing measured here bounds it — one more reason it is off. `SidecarJudge`'s
 word list reads the command only, not the scripts.
 
-`npm run eval:risk-gate` puts hand-labelled shell commands through the gate and reports
+`npm run eval:risk-gate` puts labelled shell commands through the gate and reports
 **prompts saved** — safe commands cleared without asking — and **false allows**. There are
 four sets: `cases.ts` (83) is the dev set that the wordings, threshold and model were
 chosen on; `testset.ts` (125), `testset2.ts` (96) and `testset3.ts` (153) are held out,
@@ -541,7 +542,8 @@ turns it away before a question is asked. "Cleared with none let through" is eac
 ceiling, at the best threshold for it chosen on these same commands.
 
 Trained rather than prompted, a small model does better — on one machine. Frozen Qwen3-0.6B
-with a logistic head per harm, fitted to 3,000 of this machine's agent commands read by hand,
+with a logistic head per harm, fitted to 3,000 of this machine's agent commands read and
+labelled one by one,
 ranks 1,000 more at AUC 0.981 against llama3.1:8b's 0.915: at the threshold registered before
 the test, 289 of 733 safe commands cleared and one of 256 unsafe let through, close to the
 8B's 308 and one, and with the threshold loosened, 556 cleared for two let through where the
@@ -612,7 +614,7 @@ call in this machine's Claude Code transcripts — 10,869 distinct commands, Jun
 | longer than the 2,000 characters the judge is shown | none | 4%, asked about unjudged |
 
 On 500 of them drawn at random, the gate cleared **132 (26%)**: 38% of the one-liners and 6%
-of the scripts. All 132 were read by hand afterwards, and none would have needed asking —
+of the scripts. All 132 were read one by one afterwards, and none would have needed asking —
 they are reads, searches, `git log` and `git diff`, type-checks and test runs, two `curl`
 GETs; about fifteen run the project's own code, which is the policy above, not a slip. There
 were no judge failures and the lowest coverage was 0.999, so the 0.95 floor costs nothing.
@@ -635,12 +637,12 @@ anything measured it. On the same 500 commands it clears 150 where the old one c
 on the other half of the split, which nothing had looked at, 139 against 115. Set against
 itself, the old wording moves 3 of 500, so the gain is real, and it also says a decision within
 a few hundredths of the line can go either way on a rerun. All 51 newly cleared commands were
-read by hand, the dev set's 21 tagged harms are all still caught, and test 3's one read gives
+read one by one, the dev set's 21 tagged harms are all still caught, and test 3's one read gives
 29/77 cleared with 0/76 false allows. Each step, in the order it had to pass, is in
 [docs/measurements.md](docs/measurements.md#reads-do-not-count).
 
 Then what it lets through was counted. 0.3.0 was put over 4,000 commands, 2,000 from each
-half with the earlier 1,000 among them, and all 1,181 it cleared (29.5%) were read by hand
+half with the earlier 1,000 among them, and all 1,181 it cleared (29.5%) were read one by one
 against the label criterion. If *the working directory* means the session's, six should have
 been asked about; if it means the one a command `cd`s into, three. They were two appends to a
 tracked file in another repository, a new file in a scratch directory, an empty directory, and
