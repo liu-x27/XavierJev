@@ -44,6 +44,7 @@ python sidecar/train.py --train train.jsonl --val val.jsonl --out sidecar/run
 #   [--extra other.jsonl --extra-weight 0.25]  commands from elsewhere, at a share of the weight
 #   [--resume]  checkpoint every 100 steps to <out>/resume.pt; run it again after a kill to continue
 #   [--risk 0.03 --confidence 0.95 --calib-share 0.5]  a threshold for a stated let-through rate
+#   [--calib held-out.jsonl]  fit the calibration on rows kept out of training, not on validation
 ```
 
 On a machine shared with other work, `--resume` means a training stopped to give memory back, or
@@ -69,7 +70,12 @@ about 80 unsafe rows near the line, where the line falls is decided by one or tw
 either way. `--calib-share` decides how many are left to decide it, and that is what a target
 costs. Those 597 rows hold 182 unsafe, 15 of which the word list already catches; split evenly,
 a median of 83 accept the risk, which reaches 5% but not 3%, while all 167 would reach 2%. Rows
-spent fitting the calibration are rows that cannot accept a risk.
+spent fitting the calibration are rows that cannot accept a risk. `--calib` takes them from
+somewhere else: a prepared file of rows held out of training fits each question's Platt
+parameters, and every validation row is left to place the line -- on that machine 167 rather
+than 83, which is 2% rather than 5%. It refuses a file sharing a row with `--train`, since a
+calibration fitted on rows the judge was pulled towards is not a fit on its behaviour, and
+calibration.json records which of the two it was, under `calibrated_on`.
 
 LoRA (rank 16, every attention and MLP projection) on the model's own Y-against-N answer to each
 question, two epochs; about 25 minutes for 3,500 commands on an RTX 5080. Then the adapters are
