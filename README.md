@@ -798,7 +798,10 @@ read, 6 of 1,181 should have been asked about, but what it held has not; and how
 against commands written to slip past it — obfuscated, encoded, split across variables — which no set here contains. Whether a third fewer prompts feels different
 across a long session than it does across a table of 153 rows. The 0.2 threshold is a
 property of this judge and this prompt, not of the gate: a different model needs it
-measured again. The router's out-of-sample
+measured again. How tightly the trained judge's line can be held: on the 597 validation
+rows behind it, half of them spent fitting the calibration, a 5% let-through target at 95%
+confidence is supportable and 3% is not, and 1% would take 299 unsafe commands the scorer
+never saw. The router's out-of-sample
 error rate is 19%, which is not a number to ship as an automatic decision. Three held-out
 gate sets exist and each carries a log of every time it has been read, because a test set
 consulted repeatedly becomes a dev set whether or not anyone admits it; two are spent, and

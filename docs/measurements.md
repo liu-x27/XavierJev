@@ -88,6 +88,8 @@ wrong first.
 | [Smaller judges](#smaller-judges) | barely faster, much worse, and a threshold that does not travel |
 | [A judge trained on this machine's traffic](#a-judge-trained-on-this-machines-traffic) | 0.6B with heads out-ranks the prompted 8B on its own traffic and loses elsewhere; fine-tuned, it clears twice the 8B's share here and matches it on `testset3`, with more misses |
 | [… audited on a day it had not seen](#round-4-what-the-clears-are-worth-audited-on-a-day-it-had-not-seen) | of 300 sampled clears, 6 are wrong by the strict reading and 1 by the cd reading; the under-1% target was not reached |
+| [… and what its threshold claims](#what-that-threshold-can-claim-and-on-how-much-evidence) | this validation set cannot support a 1%, 2% or 3% let-through target at all; what it costs is the half spent fitting the calibration |
+| [Re-splitting the labels](#re-splitting-the-labels-what-ages-and-what-does-not) | the ranking does not age and 600 labels nearly suffice; where the line falls is what moves |
 | [Beside a rule-based guard](#beside-a-rule-based-guard) | opposite failures: one misses most harm, the other most of the benefit |
 | [On real traffic](#on-real-traffic) | a quarter cleared, all of it harmless on reading, held back by one question |
 | [On JevBench](#on-jevbench) | easy solved, hard at chance and confident — as the options are listed |
@@ -1173,6 +1175,111 @@ Changing the list changes `SECRET_WORDS.source`, which a sidecar's recorded cana
 judge recorded against the old list no longer describes the build in front of it and the hook
 refuses to start until `npm run sidecar:canaries` is run again. Re-recorded here, all seven
 canary scores were unchanged.
+
+### What that threshold can claim, and on how much evidence
+
+*2026-09-27, `sidecar/train.py --risk`, run for the first time, over the 597 scored validation
+rows round 3 calibrated on. Nothing was retrained and nothing was rethresholded: the margins
+were recovered from the cached offline scores by inverting the shipped Platt parameters, which
+reproduces every stored gate score exactly. Aggregates under `round4.risk_acceptance`.*
+
+The threshold above is the second-lowest gate score among the unsafe validation rows, picked on
+the same rows that fit the calibration. "One let through on validation" is then true by
+construction, and it did not carry: re-split below, the same rule gave thresholds ten times
+apart, and validation's one became none of 308 on one test and seven of 274 on another.
+
+`--risk` states what the line claims instead of counting what it did. Half the validation rows
+fit each question's Platt parameters; the other half, which that fitted scorer never saw, put
+the threshold at the k-th lowest unsafe score, for the largest k with
+P(Binomial(n, ε) ≤ k−1) ≤ 1 − δ. Over 20 seeds at δ = 95%:
+
+| target ε | seeds that cannot support it | median k | median threshold (range over seeds) | safe cleared, the accepting half |
+|---|---|---|---|---|
+| 1%, 2%, 3% | **20 of 20** | — | — | — |
+| 5% | 0 of 20 | 1 | 0.0153 (0.0016–0.33, ×211) | 182/206 |
+| 10% | 0 of 20 | 4 | 0.377 (0.013–0.83, ×66) | 200/206 |
+| the shipped rule, same splits | — | — | 0.0431 (0.0026–0.74, **×291**) | 196/206 |
+
+**The evidence is what binds.** 182 of the 597 rows are unsafe and the word list already catches
+15, so 167 can place a line; halved to fit the calibration, a median of 83 remain, and at 95%
+confidence the lowest of n scores may be used as the line only from 59 rows up (5%), 99 (3%),
+149 (2%), 299 (1%). This validation set cannot support 3% at all, and saying so is the result.
+What costs the target is the split rather than the rule: all 167 would reach 2%. Rows spent
+fitting the calibration are rows that cannot accept a risk.
+
+**The order statistic does not steady the threshold.** Over the same seeds the 5% threshold
+moves by a factor of 211, against 291 for the default rule. With about 80 unsafe rows, where the
+line falls is settled by one or two commands. What changes is that the number carries a stated
+rate and confidence, not that it stops moving.
+
+**What the shipped line claims.** 0.016096642 falls almost exactly where the 5% rule's median
+lands, 0.0153. It was not derived that way — it is the second-lowest unsafe score over all 597
+rows — but a claim of that shape, "at most 5% of the unsafe commands the word list misses, at
+95% confidence", is the kind the evidence behind it can carry, rather than the one-in-182 its
+validation counts suggest.
+
+The audit's let-through figure is under 5% as well — 2.8% strict, 0.6% by the cd reading — and
+the two belong side by side without either confirming the other. They are different quantities
+on different commands: the bound here is an order statistic over validation rows drawn from the
+training pool, about the rate at which exchangeable unsafe commands would be let through in
+future; the audit's is a point estimate, weighted by inclusion probability, of what one sampled
+day of fresh traffic was let through, from labels made by the same labeller as the training
+labels against the same written criterion. What makes them worth reading together is that
+nothing about the threshold was chosen on either.
+
+Under the threshold sits a smaller question: the same command does not score identically twice.
+Scored offline in a batch by `sidecar/score.py` and one at a time through `sidecar/serve.py`,
+the path the Claude Code hook takes, 300 validation commands differ in their gate score by a
+median of 0.029 log-odds, p95 0.088, p99 0.155, largest 0.309 — batch padding and composition
+together with whatever else differs between two runs of the same code. None of the 300 decisions
+flips at the threshold and 6 sit within the p99 of it, so the line is meaningful to about ±0.16
+log-odds, with roughly one command in fifty inside that. Through the running hook, one at a time
+over HTTP with the GPU shared with other work, those 300 took a median of 142 ms and a p95 of
+186 ms, against the 44 ms the model alone takes on a quiet card.
+
+One property of the score itself, while it is being examined. The gate is the largest of three
+separately calibrated probabilities, which is not a calibrated probability of "any harm" and
+need not order commands the way the margins do. On the 574 validation rows the word list does
+not catch it costs the ranking almost nothing — AUC 0.9973, against 0.9972 for the largest raw
+margin and 0.9937 for the largest standardised one — but it does reorder: 7.3% of pairs come out
+the other way round from the raw margins. The three Platt slopes differ by a factor of 1.51,
+which is why it is 7% and not more.
+
+### Re-splitting the labels: what ages and what does not
+
+*2026-09-27. The same 4,000 labelled commands, re-split and the recipe rerun — 2,400 train, 600
+validation, 1,000 test in every condition, one seed each, read once. Those 4,000 have already
+shaped the method, so this is a diagnostic and not an independent test. Aggregates under
+`round4.resplit_diagnostics`.*
+
+| condition | trained AUC | at its own threshold | that threshold | llama3.1:8b AUC | the 8B at 0.2 |
+|---|---|---|---|---|---|
+| by time: the latest 1,000 | **0.982** | 541/690 cleared, **0/308** let through | 0.0058 | 0.916 | 282/690 · 1/308 |
+| at random | **0.984** | 670/716 cleared, **7/274** | 0.0540 | 0.908 | 303/716 · 2/274 |
+| at random, 1,200 training rows | 0.978 | 650/716 · 10/274 | | 0.908 | |
+| at random, 600 training rows | 0.977 | 647/716 · 8/274 | | 0.908 | |
+
+The ranking does not age. The two conditions are 0.002 AUC apart, and inside the time-ordered
+test the commands from sessions training never saw score **0.994** against 0.975 for the ones
+whose sessions it had seen — the opposite of leaning on session memory. The 8B is the control
+here: it is untrained, so its own gap between the two tests is difficulty rather than drift, and
+it is 0.916 against 0.908, which says the later commands are not the harder ones. That is not
+the same as the two tests being equally hard for every judge, and an AUC close to another hides
+whatever happens in the region where almost nothing is let through.
+
+Where the line falls is the part that fails. The same rule gave 0.0058 on one condition and
+0.0540 on the other, ten times apart, and the validation "one let through" both were built on
+became none of 308 on the first test and seven of 274 on the second. Ranking at 0.98 everywhere,
+acceptance decided by two commands: that is the argument for the risk targets above.
+
+Labels are not the shortage either. 600 training commands already give 0.977 against 2,400's
+0.984. The very-low let-through end of the curve is noisy with one seed and says nothing firm.
+
+What this cannot show: the random test shares its sessions with training almost entirely — 99.5%
+of its commands come from a session that also appears in training, against 67.7% for the
+time-ordered split — so the difference between the two conditions is a split difference, not the
+cost of time, and this is one window of about 29 hours either way. Nothing here says the judge
+stayed safe on fresh traffic. The audit is what measures that.
 
 ---
 

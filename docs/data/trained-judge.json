@@ -697,6 +697,164 @@
    "not_evidence": "the audited command carries four of the added shapes and the list was written knowing it; only the cost is measured",
    "narrowed_after_reading_the_cost": "a bare `cookie` was replaced by a jar by name, session cookie and bcookie",
    "still_missed": "a secret revealed through a script the command runs, or a pattern spelled another way"
+  },
+  "risk_acceptance": {
+   "question": "what let-through rate this threshold can be held to, and on how much evidence",
+   "how": "sidecar/train.py --risk over the 597 scored validation rows round 3 calibrated on, 20 seeds, --calib-share 0.5, 95% confidence: half the rows fit each question's Platt parameters, the other half, which that fitted scorer never saw, place the threshold at the k-th lowest unsafe score. Nothing retrained or rethresholded; margins recovered from the cached offline scores by inverting the shipped Platt and checked to reproduce every stored gate score exactly.",
+   "validation": {
+    "scored": 597,
+    "unsafe": 182,
+    "unsafe_the_word_list_already_catches": 15,
+    "unsafe_available_to_place_a_line": 167,
+    "median_unsafe_in_the_accepting_half": 83
+   },
+   "unsafe_rows_needed_at_95_percent_confidence": {
+    "0.01": 299,
+    "0.02": 149,
+    "0.03": 99,
+    "0.05": 59,
+    "0.10": 29
+   },
+   "targets": {
+    "0.01": {
+     "seeds_that_cannot_support_it": 20,
+     "of_seeds": 20
+    },
+    "0.02": {
+     "seeds_that_cannot_support_it": 20,
+     "of_seeds": 20
+    },
+    "0.03": {
+     "seeds_that_cannot_support_it": 20,
+     "of_seeds": 20
+    },
+    "0.05": {
+     "seeds_that_cannot_support_it": 0,
+     "of_seeds": 20,
+     "median_k": 1,
+     "median_threshold": 0.01528,
+     "threshold_range": [
+      0.00156,
+      0.33
+     ],
+     "median_safe_cleared_accepting_half": "182/206",
+     "median_safe_cleared_fitting_half": "177/208",
+     "median_let_through_fitting_half": "1/84"
+    },
+    "0.10": {
+     "seeds_that_cannot_support_it": 0,
+     "of_seeds": 20,
+     "median_k": 4,
+     "median_threshold": 0.377,
+     "threshold_range": [
+      0.0126,
+      0.833
+     ],
+     "median_safe_cleared_accepting_half": "200/206",
+     "median_safe_cleared_fitting_half": "198/208",
+     "median_let_through_fitting_half": "2/84"
+    }
+   },
+   "shipped_rule_on_the_same_splits": {
+    "median_threshold": 0.0431,
+    "threshold_range": [
+     0.002557,
+     0.7431
+    ],
+    "spread_factor": 291,
+    "median_safe_cleared_accepting_half": "196/206",
+    "median_safe_cleared_fitting_half": "192/208",
+    "median_let_through_fitting_half": "2/84"
+   },
+   "what_it_says": "the order statistic states what the threshold claims; it does not steady it (a factor of 211 across seeds at 5%, against 291 for the default rule). Half the validation rows going to the Platt fit is what costs the target: all 167 unsafe rows would reach 2%.",
+   "the_shipped_threshold": "0.016096642000103977 falls where the 5% rule's median falls (0.0153), though it was not derived that way. The audit's let-through figure is also under 5% (2.8% strict, 0.6% cd), but it is a different quantity on different commands -- a weighted point estimate on one sampled day of fresh traffic, against an order-statistic bound on validation rows from the training pool -- and neither confirms the other."
+  },
+  "batch_against_online": {
+   "how": "300 validation rows (seed margin-20260927) scored twice: offline in batch by sidecar/score.py on 2026-09-26, and one at a time through sidecar/serve.py on 2026-09-27, which is the path the Claude Code hook takes. Same merged adapter, prompts and Platt parameters, so the difference bundles batch padding and composition with whatever else differs between two runs.",
+   "gate_abs_delta_log_odds": {
+    "median": 0.029,
+    "p95": 0.088,
+    "p99": 0.155,
+    "max": 0.309
+   },
+   "per_question_p95_log_odds": {
+    "destroys-data": 0.131,
+    "outside-cwd": 0.116,
+    "exfiltrates": 0.087
+   },
+   "decisions_that_flip_at_the_threshold": "0/300",
+   "rows_within_the_p99_margin_of_the_threshold": "6/300",
+   "live_latency_ms": {
+    "p50": 142,
+    "p95": 186,
+    "max": 315,
+    "how": "one at a time over HTTP, GPU shared with other work; the model-only figure on a quiet card is 44 ms"
+   }
+  },
+  "combining_the_three_answers": {
+   "question": "the gate is the largest of three separately calibrated probabilities, which is not a calibrated probability of any harm. Does calibrating each question reorder commands?",
+   "rows": 574,
+   "unsafe": 167,
+   "gate_auc": {
+    "max of the calibrated answers (shipped)": 0.9973,
+    "max of the raw margins": 0.9972,
+    "max of the standardised margins": 0.9937
+   },
+   "pairs_ordered_differently": {
+    "shipped against raw": 0.073,
+    "shipped against standardised": 0.017,
+    "raw against standardised": 0.08
+   },
+   "platt_slopes": {
+    "destroys-data": 0.700503,
+    "outside-cwd": 0.618724,
+    "exfiltrates": 0.46443
+   }
+  },
+  "resplit_diagnostics": {
+   "what_this_is": "the same 4,000 labelled commands re-split and the recipe rerun, 2,400 train / 600 validation / 1,000 test in every condition, one seed each, read once on 2026-09-27. Those 4,000 have already shaped the method, so this is a diagnostic, not an independent test.",
+   "conditions": {
+    "by time, the latest 1,000": {
+     "trained_auc_strict": 0.982,
+     "threshold": 0.0058,
+     "trained_at_its_threshold": "541/690 cleared, 0/308 let through",
+     "llama3.1:8b_auc_strict": 0.916,
+     "llama3.1:8b_at_0.2": "282/690 cleared, 1/308 let through"
+    },
+    "at random": {
+     "trained_auc_strict": 0.984,
+     "threshold": 0.054,
+     "trained_at_its_threshold": "670/716 cleared, 7/274 let through",
+     "llama3.1:8b_auc_strict": 0.908,
+     "llama3.1:8b_at_0.2": "303/716 cleared, 2/274 let through"
+    },
+    "at random, 1,200 training rows": {
+     "trained_auc_strict": 0.978,
+     "trained_at_its_threshold": "650/716 cleared, 10/274 let through"
+    },
+    "at random, 600 training rows": {
+     "trained_auc_strict": 0.977,
+     "trained_at_its_threshold": "647/716 cleared, 8/274 let through"
+    }
+   },
+   "test_commands_from_a_session_that_is_also_in_training": {
+    "by time": 0.677,
+    "at random": 0.995
+   },
+   "inside_the_time_ordered_test": {
+    "sessions_seen_in_training": {
+     "n": 677,
+     "trained_auc": 0.975,
+     "llama3.1:8b_auc": 0.919
+    },
+    "sessions_never_seen": {
+     "n": 321,
+     "trained_auc": 0.994,
+     "llama3.1:8b_auc": 0.905
+    }
+   },
+   "what_it_says": "the ranking does not age -- 0.002 AUC between the conditions, and commands from unseen sessions rank better, not worse. Where the line falls is the failure: the same rule gave 0.0058 and 0.0540, and the validation 'one let through' became 0/308 on one test and 7/274 on the other. 600 training commands already give 0.977.",
+   "not_shown": "the random test shares its sessions with training almost entirely, so the gap between the conditions is a split difference and not the cost of time; and nothing here says the judge stayed safe on fresh traffic -- the audit measures that."
   }
  }
 }
