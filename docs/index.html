@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>XavierJev</title>
+<meta name="description" content="A decision layer for agent loops: yes/no, choice and rubric questions read off one token's probabilities from a small local model, measured against labelled sets.">
+<meta property="og:title" content="XavierJev">
+<meta property="og:description" content="Ask for Y or N. Read the ratio, not the prose. A decision layer for agent loops, measured before it is trusted.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://liu-x27.github.io/XavierJev/">
+<meta property="og:image" content="https://liu-x27.github.io/XavierJev/brand/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="brand/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f3efe6;
+    --panel: #fbf9f4;
+    --text: #141311;
+    --dim: #57534b;
+    --faint: #8f897d;
+    --line: rgba(20, 19, 17, 0.16);
+    --line-strong: rgba(20, 19, 17, 0.32);
+    --accent: #d7361f;
+    --ok: #3f6b3a;
+    --code-bg: #141311;
+    --code-text: #efe9dd;
+    --serif: "Instrument Serif", Georgia, serif;
+    --sans: "Inter", "Segoe UI", system-ui, sans-serif;
+    --mono: "JetBrains Mono", "Cascadia Mono", ui-monospace, monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #12110f;
+      --panel: #1a1916;
+      --text: #efe9dd;
+      --dim: #b3ab9c;
+      --faint: #7f786c;
+      --line: rgba(239, 233, 221, 0.14);
+      --line-strong: rgba(239, 233, 221, 0.3);
+      --accent: #ff5a3c;
+      --ok: #8fbf7f;
+      --code-bg: #0a0a09;
+      --code-text: #efe9dd;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #12110f;
+    --panel: #1a1916;
+    --text: #efe9dd;
+    --dim: #b3ab9c;
+    --faint: #7f786c;
+    --line: rgba(239, 233, 221, 0.14);
+    --line-strong: rgba(239, 233, 221, 0.3);
+    --accent: #ff5a3c;
+    --ok: #8fbf7f;
+    --code-bg: #0a0a09;
+    --code-text: #efe9dd;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.6 var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
+  a:hover { text-decoration-color: var(--accent); }
+  code, pre { font-family: var(--mono); font-size: 0.86em; }
+  :not(pre) > code {
+    padding: 0.08em 0.36em;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: var(--panel);
+    white-space: nowrap;
+  }
+  img { max-width: 100%; height: auto; display: block; }
+  @media (max-width: 640px) { :not(pre) > code { white-space: normal; overflow-wrap: anywhere; } }
+
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+  @media (max-width: 640px) { .wrap { padding: 0 16px; } }
+
+  /* masthead */
+  .masthead {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    padding: 20px 0 14px;
+    border-bottom: 1px solid var(--line-strong);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+  .brand .mark { width: 30px; height: 30px; flex: none; }
+  .brand span { font: 26px/1 var(--serif); letter-spacing: -0.01em; }
+  .masthead nav { display: flex; gap: 20px; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; }
+  .masthead nav a { text-decoration: none; color: var(--dim); }
+  .masthead nav a:hover { color: var(--text); }
+  @media (max-width: 720px) { .masthead nav a:not(.gh) { display: none; } }
+
+  /* hero */
+  .hero { padding: 72px 0 40px; display: grid; gap: 28px; }
+  .eyebrow { font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); }
+  .hero h1 {
+    margin: 0;
+    font: 400 clamp(44px, 7.4vw, 92px)/1.02 var(--serif);
+    letter-spacing: -0.02em;
+    max-width: 16ch;
+  }
+  .hero h1 code {
+    font: italic 400 0.9em var(--serif);
+    border: 0; background: none; padding: 0;
+    white-space: nowrap; overflow-wrap: normal;
+  }
+  .hero h1 .held { color: var(--accent); }
+  .lede { max-width: 62ch; font-size: 19px; color: var(--dim); margin: 0; }
+  .lede strong { color: var(--text); font-weight: 600; }
+  .ctas { display: flex; flex-wrap: wrap; gap: 12px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 11px 18px; border-radius: 999px;
+    font-size: 15px; font-weight: 500; text-decoration: none;
+    border: 1px solid var(--line-strong);
+  }
+  .btn.primary { background: var(--text); color: var(--bg); border-color: var(--text); }
+  .btn:hover { border-color: var(--accent); }
+  .badges { display: flex; flex-wrap: wrap; gap: 8px; }
+  .badges span {
+    font: 12px/1 var(--mono); padding: 6px 9px;
+    border: 1px solid var(--line); border-radius: 999px; color: var(--dim);
+  }
+
+  /* window frame around the recording */
+  .window {
+    border: 1px solid var(--line-strong); border-radius: 10px; overflow: hidden;
+    background: var(--panel);
+    box-shadow: 0 1px 0 var(--line), 0 24px 60px -30px rgba(0, 0, 0, 0.35);
+  }
+  .window-bar {
+    display: flex; align-items: center; gap: 7px; padding: 10px 14px;
+    border-bottom: 1px solid var(--line);
+    font: 12px/1 var(--mono); color: var(--faint);
+  }
+  .window-bar i { width: 10px; height: 10px; border-radius: 50%; background: var(--line-strong); display: inline-block; }
+  .window-bar i:first-child { background: var(--accent); }
+  .window-bar span { margin-left: 8px; }
+  .caption { font-size: 14px; color: var(--faint); margin: 12px 2px 0; max-width: 80ch; }
+
+  /* sections */
+  section { padding: 72px 0; border-top: 1px solid var(--line); }
+  .kicker { display: flex; align-items: baseline; gap: 14px; margin-bottom: 18px; }
+  .kicker b { font: 500 13px/1 var(--mono); color: var(--accent); }
+  .kicker span { font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); }
+  h2 {
+    margin: 0 0 18px;
+    font: 400 clamp(32px, 4.4vw, 50px)/1.08 var(--serif);
+    letter-spacing: -0.01em; max-width: 22ch;
+  }
+  .prose { max-width: 66ch; color: var(--dim); font-size: 17px; }
+  .prose p { margin: 0 0 14px; }
+  .prose strong { color: var(--text); font-weight: 600; }
+
+  .grid { display: grid; gap: 16px; }
+  .grid > * { min-width: 0; }
+  .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .g4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  @media (max-width: 900px) { .g3, .g4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 600px) { .g2, .g3, .g4 { grid-template-columns: 1fr; } }
+
+  .card {
+    border: 1px solid var(--line); border-radius: 10px; background: var(--panel);
+    padding: 20px;
+  }
+  .card h3 { margin: 0 0 6px; font: 500 16px/1.3 var(--sans); }
+  .card p { margin: 0; color: var(--dim); font-size: 15px; }
+  .card .tag { font: 12px/1 var(--mono); color: var(--faint); margin-bottom: 12px; display: block; }
+
+  /* the four questions */
+  .harm { border-top: 2px solid var(--text); padding-top: 14px; }
+  .harm code { border: 0; background: none; padding: 0; font-size: 14px; color: var(--accent); }
+  .harm p { margin: 8px 0 0; color: var(--dim); font-size: 15px; }
+  .rule-line {
+    margin-top: 28px; padding: 16px 20px; border-left: 3px solid var(--accent);
+    background: var(--panel); color: var(--dim); max-width: 78ch;
+  }
+
+  /* numbers */
+  .stat { border-top: 1px solid var(--line-strong); padding-top: 16px; }
+  .stat .n { font: 400 clamp(46px, 6vw, 72px)/1 var(--serif); letter-spacing: -0.02em; }
+  .stat .n small { font-size: 0.45em; color: var(--dim); }
+  .stat .n.red { color: var(--accent); }
+  .stat p { margin: 10px 0 0; color: var(--dim); font-size: 15px; }
+  .fineprint { margin-top: 26px; font-size: 14px; color: var(--faint); max-width: 80ch; }
+
+  /* ledger of what it found in itself */
+  .ledger { list-style: none; margin: 28px 0 0; padding: 0; border-top: 1px solid var(--line-strong); }
+  .ledger li {
+    display: grid; grid-template-columns: 3.2rem minmax(0, 1fr) minmax(0, 1.2fr); gap: 20px;
+    padding: 16px 0; border-bottom: 1px solid var(--line);
+  }
+  .ledger .no { font: 500 13px/1.6 var(--mono); color: var(--accent); }
+  .ledger .what { font-weight: 500; }
+  .ledger .how { color: var(--dim); font-size: 15px; }
+  @media (max-width: 700px) {
+    .ledger li { grid-template-columns: 2.4rem minmax(0, 1fr); }
+    .ledger .how { grid-column: 2; }
+  }
+
+  /* path of one call */
+  .path { margin-top: 32px; overflow-x: auto; }
+  .path svg { min-width: 760px; width: 100%; height: auto; }
+
+  /* gallery */
+  .shot { margin: 0; }
+  .shot .frame { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--panel); }
+  .shot figcaption { margin-top: 10px; font-size: 14px; color: var(--dim); }
+  .shot figcaption b { color: var(--text); font-weight: 500; }
+
+  pre.term {
+    margin: 0; padding: 18px 20px; overflow-x: auto;
+    background: var(--code-bg); color: var(--code-text);
+    border-radius: 8px; font-size: 13px; line-height: 1.7;
+  }
+  .shot pre.term { white-space: pre-wrap; overflow-wrap: anywhere; }
+  pre.term .p { color: #8f897d; }
+  pre.term .r { color: #ff7a5f; }
+  pre.term .g { color: #9fcf8f; }
+
+  footer { padding: 40px 0 64px; border-top: 1px solid var(--line-strong); color: var(--faint); font-size: 14px; }
+  footer .row { display: flex; flex-wrap: wrap; gap: 12px 28px; justify-content: space-between; }
+
+  .aside { margin: 4px 0 0; max-width: 78ch; font-size: 14px; color: var(--faint); }
+  .frame.dark { background: #0f1013; border-color: rgba(255, 255, 255, 0.08); }
+  table.cmp { width: 100%; border-collapse: collapse; font-size: 15px; }
+  table.cmp th, table.cmp td { text-align: left; padding: 12px 10px; border-bottom: 1px solid var(--line); }
+  table.cmp th { font: 500 12px/1.3 var(--mono); color: var(--faint); text-transform: uppercase; letter-spacing: 0.06em; }
+  table.cmp td:not(:first-child), table.cmp th:not(:first-child) { text-align: right; font-family: var(--mono); white-space: nowrap; }
+  table.cmp tr.hot td { color: var(--text); font-weight: 600; }
+  table.cmp tr.hot td:nth-child(2) { color: var(--accent); }
+  .card p strong { color: var(--text); font-weight: 600; }
+  .hero h1 .held { color: var(--accent); font-style: italic; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <a class="brand" href="#top" aria-label="XavierJev home"><svg class="mark" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path fill="currentColor" d="M64 288H128V352H64ZM160 64H224V448H160ZM256 288H448V352H256Z"/><circle fill="var(--accent)" cx="352" cy="160" r="48"/></svg><span>XavierJev</span></a>
+    <nav aria-label="Sections">
+      <a href="#idea">The idea</a>
+      <a href="#decisions">Decisions</a>
+      <a href="#evidence">Evidence</a>
+      <a href="#claude-code">Claude Code</a>
+      <a href="#start">Start</a>
+      <a class="gh" href="https://github.com/liu-x27/XavierJev">GitHub ↗</a>
+    </nav>
+  </header>
+
+  <main id="top">
+    <div class="hero">
+      <div class="eyebrow">A decision layer for agent loops · TypeScript</div>
+      <h1>Ask for <code>Y</code> or <code>N</code>. Read the <span class="held">ratio</span>, not the prose.</h1>
+      <p class="lede">
+        An agent loop is full of small decisions nobody wants to wait for: may this command run
+        unasked, which model takes this request, is this error worth one more try, is this run
+        going anywhere. XavierJev answers each as a typed question, read off <strong>one token’s
+        probabilities</strong> from a small local model in tens of milliseconds, and measures it
+        against labelled sets before it is trusted. On 153 commands it had never seen, its risk gate
+        let <strong>none of the 76 unsafe ones</strong> through.
+      </p>
+      <div class="ctas">
+        <a class="btn primary" href="https://github.com/liu-x27/XavierJev">View on GitHub</a>
+        <a class="btn" href="#start">Quick start</a>
+        <a class="btn" href="https://github.com/liu-x27/XavierJev/blob/main/docs/measurements.md">Measurements</a>
+        <a class="btn" href="https://liu-x27.github.io/mini-claude-code/">mini-claude-code ↗</a>
+      </div>
+      <div class="badges" aria-label="Works with">
+        <span>Claude Code plugin</span><span>Ollama · llama.cpp</span><span>OpenAI-compatible logprobs</span>
+        <span>LoRA sidecar judge</span><span>67 mocked checks</span><span>MIT</span>
+      </div>
+
+      <figure class="shot" style="margin-top: 8px">
+        <div class="frame dark"><img src="at-a-glance.svg" width="1020" height="680" alt="Six panels: a gate decision's latency; how naming N before Y moves every score; the 95% bound on the false-allow rate against unsafe commands tested; a fine-tuned Qwen3-0.6B against prompted llama3.1:8b on 1,000 real commands; the 1,181 real commands the gate cleared, 6 of which should have been asked; how often choice() picks the option listed first."></div>
+        <figcaption>
+          Six measurements from <a href="https://github.com/liu-x27/XavierJev/blob/main/docs/measurements.md">measurements.md</a>.
+          A gate decision is four questions answered one after another, about 90 ms in all. Naming N
+          before Y, and changing nothing else, moves every score. Zero false allows in 76 tries is a
+          bound of 3.9%, not a rate of zero.
+        </figcaption>
+      </figure>
+      <p class="aside">
+        The shape is borrowed from TypeSafe AI’s <a href="https://typesafe.ai/blog/introducing-system-one-models-and-jev">Jev</a>,
+        a “System One” decision model. XavierJev is an independent project and not affiliated with
+        TypeSafe: nothing here calls the Jev API, and nothing was trained on its output.
+      </p>
+    </div>
+
+    <section id="idea">
+      <div class="kicker"><b>01</b><span>The idea</span></div>
+      <h2>A number the model did not choose.</h2>
+      <div class="grid g2" style="margin-top: 8px; align-items: start">
+        <div class="prose">
+          <p>
+            Asked for <code>{"confidence": 0.9}</code>, a model writes whichever number reads well.
+            Asked for <code>Y</code> or <code>N</code>, the ratio between their probabilities is a
+            quantity it did not choose. So every question here is answered by <strong>one token</strong>,
+            and the whole distribution comes out of one forward pass.
+          </p>
+          <p>
+            <code>coverage</code> says how much of that token landed on the labels at all: a model that
+            wanted to start a sentence shows up as that, not as a confident renormalisation of what was
+            left. Below 95%, it counts as a failure.
+          </p>
+          <p>
+            The state is a flat map of short strings, and keeping it to the few facts a question is about
+            is the caller’s job. A decision model answers the question as worded.
+          </p>
+        </div>
+        <pre class="term"><span class="p">// three primitives, one token each</span>
+noul(state, questions)
+  <span class="p">→ [{ id, probability, coverage }]</span>       <span class="p">// yes or no</span>
+
+choice(state, ask, options, { orders })
+  <span class="p">→ { answers, coverage, orders }</span>       <span class="p">// one of 2–8</span>
+
+rubric(state, ask, levels, { orders })
+  <span class="p">→ { distribution, expected, spread }</span>  <span class="p">// 2–9 levels</span>
+
+<span class="p">// the risk gate is four noul() questions, worst wins</span>
+await gate({ toolName: "Bash",
+  input: { command: "rm -rf dist" } })
+<span class="p">→ {</span> action: <span class="r">"ask"</span>,
+    probability: <span class="r">0.99…</span>, threshold: 0.2 <span class="p">}</span></pre>
+      </div>
+    </section>
+
+    <section id="decisions">
+      <div class="kicker"><b>02</b><span>Four decisions an agent loop makes</span></div>
+      <h2>Each one fails in the direction that costs least.</h2>
+      <div class="grid g4" style="margin-top: 8px">
+        <div class="card"><span class="tag">risk gate · four yes/no, worst wins</span><h3>May this run unasked?</h3><p>Clears what all four questions call safe. On failure, it <strong>asks you</strong>.</p></div>
+        <div class="card"><span class="tag">router · one yes/no</span><h3>Cheap model or strong?</h3><p>34% of held-out requests downgraded, but 19% of hard ones too, so it is off by default. On failure, <strong>the strong model</strong>.</p></div>
+        <div class="card"><span class="tag">retry · one yes/no</span><h3>Try a failed read again?</h3><p>The best wording got 29 of 36. A regex got 36 of 36, and the regex ships. On failure, <strong>no retry</strong>.</p></div>
+        <div class="card"><span class="tag">stop · a rule, then one yes/no</span><h3>Is this run stuck?</h3><p>0 wrong stops and 0 missed, dev and held out, over 39 labelled runs. On failure, <strong>carry on</strong>.</p></div>
+      </div>
+    </section>
+
+    <section id="evidence">
+      <div class="kicker"><b>03</b><span>The evidence</span></div>
+      <h2>Measured against labelled sets, then against real traffic.</h2>
+      <div class="grid g4" style="margin-top: 12px">
+        <div class="stat"><div class="n red">0<small>/76</small></div><p>unsafe commands cleared out of 153 held out: a false-allow rate below 3.9%, not zero.</p></div>
+        <div class="stat"><div class="n">6<small>/1,181</small></div><p>of the real commands it cleared should have been asked, every one of the 1,181 read by hand.</p></div>
+        <div class="stat"><div class="n">656<small>/733</small></div><p>safe real commands cleared by a 0.6B model fine-tuned here, at 44 ms, where the prompted 8B cleared 308.</p></div>
+        <div class="stat"><div class="n">48<small>%</small></div><p>of the time <code>choice()</code> picks the option listed first, where chance is 22%. Averaging every order fixes it.</p></div>
+      </div>
+      <p class="fineprint">
+        The held-out sets log every time they were read. The fine-tuned judge also let 4 of 256 unsafe
+        commands through where the 8B let 1, was trained on one machine’s traffic, and on commands written
+        anywhere else only ties the 8B. Asking in every order moves JevBench’s hard tier from 36% to 51%.
+        All of it, with the thresholds that were reasoned wrong before they were measured right, is in
+        <a href="https://github.com/liu-x27/XavierJev/blob/main/docs/measurements.md">measurements.md</a>.
+      </p>
+    </section>
+
+    <section id="lost">
+      <div class="kicker"><b>04</b><span>Where the model lost</span></div>
+      <h2>The places a regex beat the model are kept.</h2>
+      <ol class="ledger">
+        <li><span class="no">01</span><span class="what">Retrying a failed read</span><span class="how">The best wording decided 29 of 36 cases; a regex decided all 36. The regex ships, and the model is not asked.</span></li>
+        <li><span class="no">02</span><span class="what">Snake from the raw board</span><span class="how">Given the cells, the model picked the best move 43 times of 133. Given digested facts, 133 of 133. The rule does the reading.</span></li>
+        <li><span class="no">03</span><span class="what">Smaller judges, and bigger</span><span class="how">At the shipped 0.2, qwen2.5:3b would clear 14 unsafe commands and yi:9b 19. The startup self-check calls both unsafe and refuses them.</span></li>
+        <li><span class="no">04</span><span class="what">A model that writes a newline first</span><span class="how">glm4:9b now puts a newline before its answer, so its first token carries no Y or N. The probe refuses it rather than guess.</span></li>
+        <li><span class="no">05</span><span class="what">Y before N</span><span class="how">Swapping the two letters in the instruction, and nothing else, sent 36 safe commands from cleared to asked. The gate checks canaries at startup for this reason.</span></li>
+      </ol>
+    </section>
+
+    <section id="guard">
+      <div class="kicker"><b>05</b><span>Beside a rule-based guard</span></div>
+      <h2>They fail in opposite directions, so run both.</h2>
+      <div class="grid g2" style="margin-top: 8px; align-items: start">
+        <div class="prose">
+          <p>
+            A rule-based PreToolUse guard blocks what its rules recognise and passes the rest. The gate
+            clears what it is sure of and leaves the rest to the prompt. On the same 153 held-out commands:
+          </p>
+          <p>
+            The guard sees every call in every permission mode; the gate, in PermissionRequest, only ever
+            clears. Nothing stops running both.
+          </p>
+        </div>
+        <table class="cmp">
+          <thead><tr><th>test 3 · 153 commands</th><th>unsafe stopped</th><th>safe passed</th></tr></thead>
+          <tbody>
+            <tr><td>cc-safety-net 2.4.7, default rules</td><td>11/76</td><td>76/77</td></tr>
+            <tr><td><code>allowlist</code> gate</td><td>76/76</td><td>8/77</td></tr>
+            <tr class="hot"><td><code>llm</code> gate, llama3.1:8b</td><td>76/76</td><td>29/77</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="claude-code">
+      <div class="kicker"><b>06</b><span>In Claude Code</span></div>
+      <h2>Fewer prompts, and it never says no.</h2>
+      <div class="grid g2" style="margin-top: 8px; align-items: start">
+        <pre class="term"><span class="p">$</span> npm run claude-code   <span class="p"># the gate's server, :3003</span>
+<span class="p">$</span> claude plugin marketplace add liu-x27/XavierJev
+<span class="p">$</span> claude plugin install xavierjev-gate@xavierjev
+
+<span class="p"># decide and log, clearing nothing</span>
+<span class="p">$</span> npm run claude-code -- --observe</pre>
+        <div class="prose">
+          <p>
+            The plugin points Claude Code’s <strong>PermissionRequest</strong> hook, which fires only when
+            Claude Code is about to ask you, at a local server running the gate. A shell command it scores
+            safe is cleared without the prompt; everything else, and every failure, including the server
+            not running, is asked about as usual.
+          </p>
+          <p>
+            It never denies, stays out of auto mode, and will not start if the judge returns no logprobs or
+            fails its self-check. <code>git log --oneline -20</code> cleared at 0.021; <code>rm -rf src</code>
+            was left to the prompt at 0.999.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section id="gallery">
+      <div class="kicker"><b>07</b><span>On a board, on a clock, and in a ladder</span></div>
+      <h2>Every picture is from a real run.</h2>
+      <div class="grid g2" style="margin-top: 8px">
+        <figure class="shot">
+          <div class="frame"><img src="snake-arena.gif" alt="The snake arena, live against llama3.1:8b." loading="lazy"></div>
+          <figcaption><b>Snake is <code>choice()</code>.</b> A rule removes the walls and the body; the model chooses among the moves that survive, live and not sped up.</figcaption>
+        </figure>
+        <figure class="shot">
+          <div class="frame"><img src="flappy-arena.gif" alt="Flappy against a 60 ms budget, live against llama3.1:8b." loading="lazy"></div>
+          <figcaption><b>Flappy is a yes/no on a clock.</b> Inside 30 ms a tick it missed 0.3% and flew; at 20 ms it missed 31% and died.</figcaption>
+        </figure>
+        <figure class="shot">
+          <div class="frame dark"><img src="ladder.svg" alt="Six local models: speed of the gate's four questions against safe commands cleared with none let through." loading="lazy"></div>
+          <figcaption><b>Smaller is barely faster; bigger is not better.</b> A decision this short costs about one pass whatever the model, and only llama3.1:8b clears 39 of 41 with nothing unsafe let through.</figcaption>
+        </figure>
+        <figure class="shot">
+          <div class="frame dark"><img src="calibration.svg" alt="Calibration of the gate's scores." loading="lazy"></div>
+          <figcaption><b>Are the numbers worth thresholding?</b> On the dev set, nothing scored below 0.2 is unsafe and nothing above 0.99 is safe. One graded harm question ranks nearly as well and clears 29 safe commands to the gate’s 39.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section id="start">
+      <div class="kicker"><b>08</b><span>Quick start</span></div>
+      <h2>No model needed to start.</h2>
+      <div class="grid g2" style="margin-top: 8px">
+        <pre class="term"><span class="p">$</span> npm install
+<span class="p">$</span> npm test                <span class="p"># 67 checks, mocked, no key</span>
+<span class="p">$</span> npm run eval:risk-gate  <span class="p"># the dev set, offline</span>
+
+<span class="p"># everything else needs a judge with logprobs</span>
+<span class="p">$</span> ollama pull llama3.1:8b
+<span class="p">$</span> export AGENT_JUDGE_API_KEY=ollama \
+    AGENT_JUDGE_BASE_URL=http://localhost:11434/v1 \
+    AGENT_JUDGE_MODEL=llama3.1:8b
+<span class="p">$</span> npm run eval:risk-gate -- --backend llm
+<span class="p">$</span> npm run arena            <span class="p"># the games' server, :3002</span>
+<span class="p">$</span> npm run arena:client     <span class="p"># the games, :5175</span></pre>
+        <div class="prose">
+          <p><strong>As a library.</strong> It is not on npm; installing from GitHub builds it:
+            <code>npm install github:liu-x27/XavierJev#v0.7.1</code>.
+            <a href="https://github.com/liu-x27/mini-claude-code">mini-claude-code</a> takes it this way.</p>
+          <p><strong>llama.cpp.</strong> <code>llama-server</code> serves the same GGUF, started with
+            <code>--no-jinja</code>: its default template writes today’s date into the prompt and moves the answers.</p>
+          <p><strong>Your own judge.</strong> <code>sidecar/</code> fine-tunes a small model on your labelled
+            commands and serves it locally, with its own threshold and canaries.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="row">
+      <span>XavierJev · <a href="https://github.com/liu-x27/XavierJev/blob/main/LICENSE">MIT</a> · by <a href="https://github.com/liu-x27">liu-x27</a> · independent of TypeSafe AI</span>
+      <span>
+        <a href="https://github.com/liu-x27/XavierJev">Source</a> ·
+        <a href="https://github.com/liu-x27/XavierJev#readme">README</a> ·
+        <a href="https://liu-x27.github.io/mini-claude-code/">mini-claude-code</a>, the harness it was written for
+      </span>
+    </div>
+  </footer>
+</div>
+</body>
+</html>

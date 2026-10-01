@@ -1,6 +1,30 @@
-# XavierJev
+<div align="center">
+
+<a href="https://liu-x27.github.io/XavierJev/">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/brand/lockup-dark.svg">
+  <img alt="XavierJev" src="docs/brand/lockup-light.svg" width="400">
+</picture>
+</a>
+
+### Ask for `Y` or `N`. Read the ratio, not the prose.
+
+A decision layer for agent loops: yes/no, one-of-*n* and rubric questions read off one token's
+probabilities from a small local model, in tens of milliseconds, and measured against labelled
+sets before any of them is trusted.
 
 [![ci](https://github.com/liu-x27/XavierJev/actions/workflows/ci.yml/badge.svg)](https://github.com/liu-x27/XavierJev/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-141311?style=flat-square)](LICENSE)
+![TypeScript](https://img.shields.io/badge/TypeScript-library-141311?style=flat-square&logo=typescript&logoColor=white)
+![Claude Code plugin](https://img.shields.io/badge/Claude_Code-permission_plugin-d7361f?style=flat-square)
+![Ollama and llama.cpp](https://img.shields.io/badge/judge-Ollama_%C2%B7_llama.cpp-141311?style=flat-square)
+![LoRA sidecar](https://img.shields.io/badge/sidecar-fine--tuned_0.6B-141311?style=flat-square)
+
+**[Project page](https://liu-x27.github.io/XavierJev/)** · [Three primitives](#three-primitives) · [Four decisions](#four-decisions-an-agent-loop-makes) · [In Claude Code](#in-claude-code) · [On real traffic](#on-real-traffic) · [Measurements](docs/measurements.md)
+
+</div>
+
+<br>
 
 An agent loop is full of small decisions nobody wants to wait for or read a paragraph
 about: may this command run without asking, which model should take this request, is this
@@ -47,7 +71,7 @@ and averaging moves JevBench's hard tier from 36% to 51%.
 
 ```bash
 npm install
-npm test                                        # 66 checks, mocked — no model, no key
+npm test                                        # 67 checks, mocked — no model, no key
 npm run eval:risk-gate                          # the gate's dev set, offline: the allow-list is its default
 ```
 
@@ -751,7 +775,7 @@ yes/no did.
 
 ## Status
 
-The mock suite — `npm test`, 66 checks, no model — covers the logic that would otherwise
+The mock suite — `npm test`, 67 checks, no model — covers the logic that would otherwise
 fail quietly: the gate's answers returned in question order and decided on the worst; the
 four ways each of the gate and the router can fail (a backend that throws, times out,
 skips a question, or answers outside [0, 1]) landing on asking and on the strong model; the
@@ -811,7 +835,7 @@ was.
 ## Development
 
 ```bash
-npm test                  # 66 checks, mocked
+npm test                  # 67 checks, mocked
 npm run typecheck         # src, games, eval, test and arena
 npm run lint
 npm run build             # the library, to dist/
