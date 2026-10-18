@@ -245,6 +245,14 @@ function lowestUnsafe(rows: Scored[]): Scored | undefined {
 }
 const pct = (sorted: number[], q: number) => sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))] ?? 0;
 const median = (xs: number[]) => pct([...xs].sort((a, b) => a - b), 0.5);
+/**
+ * A path on this machine cut to its last part before it goes in the file: a sidecar names the
+ * directory its weights are in, and where that is on one machine is nobody's business.
+ */
+const local = (text: string) =>
+  text
+    .replace(/[A-Za-z]:[\\/](?:[^\\/\s]+[\\/])*([^\\/\s]+)/g, "$1")
+    .replace(/(^|\s)\/(?:[^/\s]+\/)+([^/\s]+)/g, "$1$2");
 /** createRiskGate takes a threshold strictly inside (0, 1); a rule can land on either end. */
 const gateThreshold = (t: number) => Math.min(1 - 1e-9, Math.max(1e-9, t));
 
@@ -411,9 +419,9 @@ for (const spec of specs) {
     usable: true,
     url: judge.url,
     server: version,
-    identity,
+    identity: identity && { ...identity, detail: local(identity.detail) },
     trainedOn: judge.trainedOn,
-    setupProblems: judge.setupProblems,
+    setupProblems: judge.setupProblems.map(local),
     threshold: own,
     thresholdFrom: threshold === undefined ? "the rule" : judge.kind === "llm" ? "shipped" : "its own training",
     rule: heldOut
