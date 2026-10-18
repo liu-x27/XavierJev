@@ -751,6 +751,36 @@ most-starred guard of this kind, is not in the table: its MIT licence carries a 
 no rights to Anthropic or those acting for it, benchmarking included, and these measurements
 are made with Claude Code.
 
+## Beside the decision endpoints
+
+Since the end of September the shape this borrows has been something model servers ship.
+Ollama 0.35 answers `/v1/systemone`, with nimble (Bespoke Labs, 9B) and tev1 (Together, 4B
+and 0.8B). llama.cpp v0.6.0 answers it too, with Julia-1 (144M), Laya (421M), Kev-4B, lev
+(4B) and Clef (27B), all Apache-2.0. OpenAI's Decisions API, in public beta since
+2026-10-06, takes predicate, choice and score questions to `gpt-6-luna` and charges only for
+input, at $0.10 per million tokens.
+
+If what you need is a probability for a yes/no or one-of-*n* question, any of these gives you
+one, from a model trained for the job, and some of them read the state once for several
+questions where the gate here asks its four one after another. What they leave to you is the
+threshold: llama.cpp's announcement says to set it per model, OpenAI's guide to set it on
+examples you have labelled yourself. That part is what this repository does, for one
+decision — may this command run unasked:
+
+- it runs on a general model a local server already has (llama3.1:8b, on Ollama or
+  llama.cpp), so nothing has to be trained first;
+- the threshold comes with what it was measured on: a dev set, three held-out sets that log
+  every read, and a bound beside each count — 0 false allows in 76 is a rate below 3.9%, not
+  zero;
+- at startup the gate checks that it is still the gate that was measured — the model's
+  digest, where the server reports one, against the one recorded, and seven canaries against
+  their recorded scores — and clears nothing if it is not;
+- of 4,000 commands from this machine's own sessions it cleared 1,181, and every one was read
+  one by one: 6 should have been asked;
+- and it answers Claude Code's PermissionRequest hook.
+
+None of these endpoints or models has been measured here.
+
 ## Are the numbers worth thresholding?
 
 A threshold only means something if the numbers under it do. `npm run eval:calibration`
