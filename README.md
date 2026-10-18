@@ -71,7 +71,7 @@ and averaging moves JevBench's hard tier from 36% to 51%.
 
 ```bash
 npm install
-npm test                                        # 67 checks, mocked — no model, no key
+npm test                                        # 73 checks, mocked — no model, no key
 npm run eval:risk-gate                          # the gate's dev set, offline: the allow-list is its default
 ```
 
@@ -179,6 +179,12 @@ three of the gate's questions and answers `reveals-secret` from a word list; it 
 threshold and canaries, since its probabilities are not on the 8B's scale, and the canaries
 carry what they were recorded on — the judge's digest, its threshold, the word list — which
 the hook compares with the sidecar in front of it ([sidecar/README.md](sidecar/README.md)).
+`SystemOneJudge` (`src/systemone.ts`) asks a decision model behind a local `/v1/systemone`
+endpoint, Ollama's or llama.cpp's, all of a decision's questions in one request. It asks only a
+server on this machine and refuses Ollama's cloud models, since the request is the shape a hosted
+decision API takes; it cannot see coverage, which the endpoint normalises away; and it brings no
+threshold, because none of these models has one measured here
+([Beside the decision endpoints](#beside-the-decision-endpoints)).
 
 ## Four decisions an agent loop makes
 
@@ -805,7 +811,7 @@ yes/no did.
 
 ## Status
 
-The mock suite — `npm test`, 67 checks, no model — covers the logic that would otherwise
+The mock suite — `npm test`, 73 checks, no model — covers the logic that would otherwise
 fail quietly: the gate's answers returned in question order and decided on the worst; the
 four ways each of the gate and the router can fail (a backend that throws, times out,
 skips a question, or answers outside [0, 1]) landing on asking and on the strong model; the
@@ -823,9 +829,12 @@ drift, its model digest against the recorded one, and a judge that answers no ca
 not say what it is, counted unverified; the answer order reaching the prompt; the Claude Code hook's allow, silence and
 abstentions; the scripts a command runs, found and read into the state only when asked; the
 sidecar judge's word list, and its refusals and absence landing on asking; its identity asked
-afresh, and its canary recording compared field by field with how it is run; a timeout in each
+afresh, and its canary recording compared field by field with how it is run; a decision
+endpoint's answers read back in question order from one request, and its refusals, malformed
+answers, answers from another model than the one asked for and its absence landing on asking,
+with anything but a loopback server refused; a timeout in each
 of the four decisions cancelling the judge's request, not only the wait for it, down to the
-sidecar seeing its connection dropped; a resumable eval file refusing a second judge; and the bounds
+sidecar and the decision endpoint seeing their connection dropped; a resumable eval file refusing a second judge; and the bounds
 `eval/stats.ts` puts beside a count. The sidecar's Python has its own checks,
 `python -m unittest discover -s sidecar`, which CI runs on a CPU build of torch: the threshold
 counted at the value saved, an adapter file missing a tensor refused, the digest moving with
@@ -865,7 +874,7 @@ was.
 ## Development
 
 ```bash
-npm test                  # 67 checks, mocked
+npm test                  # 73 checks, mocked
 npm run typecheck         # src, games, eval, test and arena
 npm run lint
 npm run build             # the library, to dist/

@@ -39,6 +39,7 @@ export {
   type SidecarInfo,
   type SidecarJudgeOptions,
 } from "./sidecar.js";
+export { SystemOneJudge, type SystemOneJudgeOptions } from "./systemone.js";
 export { createModelRouter, ROUTING_QUESTION, type ModelRouterOptions } from "./router.js";
 export {
   anyStopJudge,

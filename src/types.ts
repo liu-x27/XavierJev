@@ -161,7 +161,8 @@ export interface ChoiceResult {
    * labels at all, before renormalising over them. Near 1 means the model
    * answered the question it was asked; low means it wanted to say something
    * else, and the renormalised answers are a guess about a guess. Over several orders, the
-   * lowest of them.
+   * lowest of them. NaN from a backend that cannot see it: a decision endpoint
+   * (`SystemOneJudge`) returns probabilities already normalised over the options.
    */
   coverage: number;
   /** How many orders the answers were averaged over: 1 unless `orders: "all"` was asked for. */
@@ -200,7 +201,7 @@ export interface RubricResult {
   expected: number;
   /** Its standard deviation: how sure the judge is of the score, in score units. */
   spread: number;
-  /** How much of the first token's probability landed on a level at all; over several orders, the lowest. */
+  /** How much of the first token's probability landed on a level at all; over several orders, the lowest; NaN when the backend cannot see it. */
   coverage: number;
   /** How many orders the distribution was averaged over: 1, or 2 with `orders: "all"`. */
   orders: number;

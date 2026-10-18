@@ -56,6 +56,7 @@ import { runMismatch } from "../eval/resume.js";
 import { casesNeeded, upperBound } from "../eval/stats.js";
 import { decide } from "../integrations/claude-code/decide.js";
 import { anyStopJudge, createRepeatStopJudge, createStopJudge } from "../src/stop.js";
+import { SystemOneJudge } from "../src/systemone.js";
 import {
   type JudgeBackend,
   type JudgeState,
@@ -1525,6 +1526,293 @@ check("续跑的结果文件绑定写它的判断器：换了模型或摘要就�
   const orphan = path.join(dir, "old.jsonl");
   writeFileSync(orphan, '{"task_id":"t1","ok":true}\n');
   if (!runMismatch(orphan, run)?.includes("no ")) throw new Error("没有记录的旧文件应当拒绝");
+});
+
+// ─────────────────────────────────────────────
+// 14. A decision endpoint
+// ─────────────────────────────────────────────
+section("14. Decision endpoint");
+
+interface SystemOneBody {
+  model: string;
+  state: unknown;
+  questions: Record<string, { type: string; instructions: string; criteria?: unknown }>;
+}
+type SystemOneReply = (body: SystemOneBody) => { status?: number; json?: unknown; text?: string };
+
+/**
+ * A stand-in for a server's /v1/systemone: `reply` builds each response from the request. Its
+ * /api/tags answers only when given models to list, as an Ollama's does and llama.cpp's would not.
+ */
+async function fakeSystemOne(reply: SystemOneReply, tags?: Array<{ name: string; digest: string }>) {
+  const bodies: SystemOneBody[] = [];
+  const server = http.createServer((req, res) => {
+    let raw = "";
+    req.on("data", (c) => {
+      raw += c;
+    });
+    req.on("end", () => {
+      if (req.method === "GET" && req.url === "/api/tags" && tags) {
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ models: tags.map((t) => ({ ...t, model: t.name })) }));
+        return;
+      }
+      if (req.method !== "POST" || req.url !== "/v1/systemone") {
+        res.statusCode = 404;
+        res.end();
+        return;
+      }
+      const body = JSON.parse(raw) as SystemOneBody;
+      bodies.push(body);
+      const r = reply(body);
+      res.statusCode = r.status ?? 200;
+      if (r.text !== undefined) {
+        res.end(r.text);
+        return;
+      }
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify(r.json));
+    });
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const { port } = server.address() as { port: number };
+  const close = () =>
+    new Promise<void>((r) => {
+      server.close(() => r());
+      server.closeAllConnections();
+    });
+  return { url: `http://127.0.0.1:${port}`, bodies, close };
+}
+
+/** Every question asked answered as a noul, P(yes) from `p` (0.01 for any not in it), in reverse order. */
+const noulReply =
+  (p: Record<string, number> = {}, over: Record<string, unknown> = {}): SystemOneReply =>
+  (body) => ({
+    json: {
+      model: body.model,
+      answers: Object.fromEntries(
+        Object.keys(body.questions)
+          .reverse()
+          .map((id) => [id, { type: "noul", noul: p[id] ?? 0.01, ...over }]),
+      ),
+      usage: { input_tokens: 120, output_tokens: 4 },
+    },
+  });
+
+await checkAsync(
+  "SystemOneJudge：闸门的四个问题装进一次请求，按提问顺序读回 noul；state 照提示判断器的样子渲染成文本；不编 coverage",
+  async () => {
+    const fake = await fakeSystemOne(
+      noulReply({ "destroys-data": 0.9, "outside-cwd": 0.3, exfiltrates: 0.05, "reveals-secret": 0.01 }),
+    );
+    try {
+      const judge = new SystemOneJudge({ url: fake.url, model: "nimble" });
+      const v = await createRiskGate({ backend: judge })({
+        toolName: "Bash",
+        input: { command: "rm -rf dist" },
+        description: "rm -rf dist",
+      });
+      if (fake.bodies.length !== 1) throw new Error(`应当一次请求，发了 ${fake.bodies.length} 次`);
+      const body = fake.bodies[0]!;
+      if (body.model !== "nimble" || body.state !== "tool: Bash\ncommand: rm -rf dist")
+        throw new Error(`请求: ${JSON.stringify(body)}`);
+      const sent = RISK_QUESTIONS.map((q) => body.questions[q.id]);
+      if (sent.some((q, i) => q?.type !== "noul" || q.instructions !== RISK_QUESTIONS[i]!.ask))
+        throw new Error(`问题: ${JSON.stringify(body.questions)}`);
+      const got = v.answers?.map((a) => `${a.id}=${a.probability}`).join(" ");
+      if (got !== "destroys-data=0.9 outside-cwd=0.3 exfiltrates=0.05 reveals-secret=0.01")
+        throw new Error(`答案: ${got}`);
+      if (v.answers?.some((a) => a.coverage !== undefined)) throw new Error("端点看不到 coverage，不该编一个");
+      if (v.action !== "ask" || v.probability !== 0.9 || judge.name !== "systemone:nimble")
+        throw new Error(`${judge.name}: ${v.action} ${v.probability}`);
+    } finally {
+      await fake.close();
+    }
+  },
+);
+
+await checkAsync(
+  "SystemOneJudge：404/500、不是 JSON、没有 answers、漏答、越界、不是数、答成别的题型、答话的是另一个模型、服务器不在——全部落回询问用户",
+  async () => {
+    // Everything that does come back says 0.01, so a failure the judge missed would show up as an allow.
+    const cases: Array<[string, SystemOneReply]> = [
+      ["模型没下载 404", () => ({ status: 404, json: { error: "model 'nimble' not found, try pulling it first" } })],
+      ["打分失败 500", () => ({ status: 500, json: { error: "scoring failed" } })],
+      ["不是 JSON", () => ({ text: "<html>502 Bad Gateway</html>" })],
+      ["没有 answers", (b) => ({ json: { model: b.model } })],
+      [
+        "漏答一个问题",
+        (b) => {
+          const { json } = noulReply()(b) as { json: { model: string; answers: Record<string, unknown> } };
+          const { "reveals-secret": _, ...three } = json.answers;
+          return { json: { ...json, answers: three } };
+        },
+      ],
+      ["概率越界", noulReply({}, { noul: 1.5 })],
+      ["概率是字符串", noulReply({}, { noul: "0.01" })],
+      ["答成了 choice", noulReply({}, { type: "choice" })],
+      ["另一个模型在答", (b) => noulReply()({ ...b, model: "lev" })],
+      ["不说是哪个模型", (b) => ({ json: { answers: (noulReply()(b).json as { answers: unknown }).answers } })],
+    ];
+    for (const [label, reply] of cases) {
+      const fake = await fakeSystemOne(reply);
+      try {
+        const v = await createRiskGate({ backend: new SystemOneJudge({ url: fake.url, model: "nimble" }) })(ls);
+        if (v.action !== "ask" || v.probability !== undefined || !/unavailable/.test(v.reason))
+          throw new Error(`${label}: ${v.action} ${v.reason}`);
+      } finally {
+        await fake.close();
+      }
+    }
+    const dead = new SystemOneJudge({ url: "http://127.0.0.1:9", model: "nimble", timeoutMs: 500 });
+    if ((await createRiskGate({ backend: dead })(ls)).action !== "ask") throw new Error("服务器不在也放行了");
+    // Two questions with one id cannot both travel in one request keyed by id.
+    const twice = await dead.noul({ command: "ls" }, [RISK_QUESTIONS[0]!, RISK_QUESTIONS[0]!]).then(
+      () => "answered",
+      (e: unknown) => String(e),
+    );
+    if (!twice.includes("distinct ids")) throw new Error(`重复的问题 id: ${twice}`);
+  },
+);
+
+check("SystemOneJudge：只问本机的服务器，Ollama 的云模型构造时就拒绝；/v1 结尾的地址照样认", () => {
+  const refused = (build: () => unknown) => {
+    try {
+      build();
+      return false;
+    } catch {
+      return true;
+    }
+  };
+  // The request is the shape a hosted decision API takes, so a remote URL is refused outright.
+  for (const url of ["https://decisions.example.com", "http://192.168.1.20:11434", "http://example.com:11434/v1", "not a url"]) {
+    if (!refused(() => new SystemOneJudge({ url, model: "nimble" }))) throw new Error(`不该接受 ${url}`);
+  }
+  for (const model of ["clef:cloud", "gpt-oss:120b-cloud"]) {
+    if (!refused(() => new SystemOneJudge({ url: "http://127.0.0.1:11434", model }))) throw new Error(`不该接受 ${model}`);
+  }
+  const saved = process.env.XAVIERJEV_SYSTEMONE_MODEL;
+  Reflect.deleteProperty(process.env, "XAVIERJEV_SYSTEMONE_MODEL");
+  try {
+    if (!refused(() => new SystemOneJudge({ url: "http://127.0.0.1:11434" }))) throw new Error("没给模型也接受了");
+  } finally {
+    if (saved !== undefined) process.env.XAVIERJEV_SYSTEMONE_MODEL = saved;
+  }
+  const local = new SystemOneJudge({ url: "http://localhost:11434/v1/", model: "tev1:0.8b" });
+  const v6 = new SystemOneJudge({ url: "http://[::1]:9931", model: "kev-4b" });
+  if (local.url !== "http://localhost:11434" || v6.url !== "http://[::1]:9931") throw new Error(`${local.url} ${v6.url}`);
+});
+
+await checkAsync(
+  "SystemOneJudge.identify：Ollama 报出清单摘要，默认金丝雀的自检因此判未验证；llama.cpp 那样没有 /api/tags 的不给摘要",
+  async () => {
+    const digest = "cd".repeat(32);
+    const ollama = await fakeSystemOne(noulReply({}, { noul: 0.5 }), [{ name: "nimble:latest", digest }]);
+    const llamacpp = await fakeSystemOne(noulReply());
+    try {
+      const judge = new SystemOneJudge({ url: ollama.url, model: "nimble" });
+      if ((await judge.identify()).digest !== digest) throw new Error("应读到清单摘要");
+      const check = await checkGate(createRiskGate({ backend: judge }));
+      if (check.verified || check.asMeasured || !check.problems.some((p) => p.includes("not the llama3.1:8b")))
+        throw new Error(`换了判断器应当未验证: ${JSON.stringify(check.problems)}`);
+      const none = await new SystemOneJudge({ url: llamacpp.url, model: "kev-4b" }).identify();
+      if (none.digest !== undefined) throw new Error(`不该有摘要: ${JSON.stringify(none)}`);
+    } finally {
+      await ollama.close();
+      await llamacpp.close();
+    }
+  },
+);
+
+await checkAsync(
+  "SystemOneJudge：choice() 按选项 id 发 criteria，rubric() 由低到高发、按位置读回；coverage 报 NaN；orders: all 一次请求装下每种顺序",
+  async () => {
+    // A judge that leans on position: 0.6 on whichever option is listed first, all of a score on the first level.
+    const fake = await fakeSystemOne((body) => ({
+      json: {
+        model: body.model,
+        answers: Object.fromEntries(
+          Object.entries(body.questions).map(([id, q]) => {
+            if (q.type === "choice") {
+              const keys = Object.keys(q.criteria as Record<string, string>);
+              const probabilities = Object.fromEntries(keys.map((k, i) => [k, i === 0 ? 0.6 : 0.4 / (keys.length - 1)]));
+              return [id, { type: "choice", choice: keys[0], probabilities, confidence: 0.3 }];
+            }
+            const n = (q.criteria as string[]).length;
+            const probabilities = Object.fromEntries(Array.from({ length: n }, (_, i) => [String(i), i === 0 ? 1 : 0]));
+            return [id, { type: "score", score: 0, legend: {}, probabilities, confidence: 1 }];
+          }),
+        ),
+      },
+    }));
+    try {
+      const judge = new SystemOneJudge({ url: fake.url, model: "tev1" });
+      const moves = [
+        { id: "up", text: "closer to food" },
+        { id: "left", text: "farther from food" },
+        { id: "right", text: "a dead end" },
+      ];
+      const once = await judge.choice({ head: "3,4" }, "Which move?", moves);
+      const criteria = fake.bodies[0]!.questions["order-0"]?.criteria;
+      if (JSON.stringify(criteria) !== JSON.stringify({ up: "closer to food", left: "farther from food", right: "a dead end" }))
+        throw new Error(`criteria: ${JSON.stringify(criteria)}`);
+      if (once.answers.map((a) => a.probability.toFixed(2)).join(" ") !== "0.60 0.20 0.20" || once.orders !== 1)
+        throw new Error(`一次: ${JSON.stringify(once)}`);
+      if (!Number.isNaN(once.coverage)) throw new Error(`端点看不到 coverage，应当报 NaN: ${once.coverage}`);
+      const all = await judge.choice({ head: "3,4" }, "Which move?", moves, { orders: "all" });
+      if (fake.bodies.length !== 2 || Object.keys(fake.bodies[1]!.questions).length !== 3)
+        throw new Error("三种顺序应当装进一次请求");
+      if (all.answers.some((a) => Math.abs(a.probability - 1 / 3) > 1e-9) || all.orders !== 3)
+        throw new Error(`每个选项各排第一一次，平均后应当相等: ${JSON.stringify(all.answers)}`);
+
+      const levels = [
+        { score: 1, text: "harmless" },
+        { score: 3, text: "some harm" },
+        { score: 5, text: "severe" },
+      ];
+      const r = await judge.rubric({ command: "ls" }, "How much harm?", levels);
+      if (JSON.stringify(fake.bodies[2]!.questions["order-0"]?.criteria) !== JSON.stringify(["harmless", "some harm", "severe"]))
+        throw new Error("rubric 应当由低到高发出");
+      if (r.expected !== 1 || r.spread !== 0 || !Number.isNaN(r.coverage)) throw new Error(`rubric: ${JSON.stringify(r)}`);
+      const both = await judge.rubric({ command: "ls" }, "How much harm?", levels, { orders: "all" });
+      if (Math.abs(both.expected - 3) > 1e-9 || both.orders !== 2)
+        throw new Error(`两个方向各一半，期望应为 3: ${JSON.stringify(both)}`);
+      const dup = await judge
+        .choice({}, "?", [
+          { id: "a", text: "x" },
+          { id: "a", text: "y" },
+        ])
+        .then(
+          () => "answered",
+          (e: unknown) => String(e),
+        );
+      if (!dup.includes("distinct ids")) throw new Error(`重复的选项 id: ${dup}`);
+    } finally {
+      await fake.close();
+    }
+  },
+);
+
+await checkAsync("SystemOneJudge：闸门超时后请求真的断开，本地模型不用再算一个没人要的答案", async () => {
+  let dropped = false;
+  const server = http.createServer((req) => {
+    req.socket.on("close", () => {
+      dropped = true;
+    }); // and never answers
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const { port } = server.address() as { port: number };
+  try {
+    const judge = new SystemOneJudge({ url: `http://127.0.0.1:${port}`, model: "nimble", timeoutMs: 10_000 });
+    const v = await createRiskGate({ backend: judge, timeoutMs: 50 })(ls);
+    for (let i = 0; i < 40 && !dropped; i++) await new Promise((r) => setTimeout(r, 25));
+    if (v.action !== "ask" || !dropped) throw new Error(`${v.action}, 连接断开: ${dropped}`);
+  } finally {
+    await new Promise<void>((r) => {
+      server.close(() => r());
+      server.closeAllConnections();
+    });
+  }
 });
 
 // ─────────────────────────────────────────────

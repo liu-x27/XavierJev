@@ -437,33 +437,7 @@ export class LlmJudge implements JudgeBackend, ChoiceBackend, RubricBackend {
    * gets a name and no digest, and a reason.
    */
   async identify(): Promise<JudgeIdentity> {
-    const model = this.model;
-    const origin = this.baseURL?.replace(/\/v1\/?$/, "").replace(/\/$/, "");
-    if (!origin) return { model, detail: "no base URL: a hosted API reports no digest" };
-    try {
-      const res = await fetch(`${origin}/api/tags`, { signal: AbortSignal.timeout(5000) });
-      if (!res.ok)
-        return {
-          model,
-          detail: `${origin}/api/tags answered ${res.status}, so not an Ollama: no digest`,
-        };
-      const body = (await res.json()) as {
-        models?: Array<{ name?: string; model?: string; digest?: string }>;
-      };
-      const wanted = model.includes(":") ? model : `${model}:latest`;
-      const entry = body.models?.find((m) => m.name === wanted || m.model === wanted);
-      if (!entry?.digest) return { model, detail: `Ollama at ${origin} does not list ${wanted}` };
-      return {
-        model,
-        digest: entry.digest,
-        detail: `Ollama manifest ${entry.digest.slice(0, 12)}`,
-      };
-    } catch (err) {
-      return {
-        model,
-        detail: `no digest from ${origin}: ${err instanceof Error ? err.message : String(err)}`,
-      };
-    }
+    return ollamaIdentity(this.baseURL?.replace(/\/v1\/?$/, "").replace(/\/$/, ""), this.model);
   }
 
   async probe(): Promise<JudgeCapability> {
@@ -574,6 +548,39 @@ function probabilityFromLogprobs(top: readonly { token: string; logprob: number 
     throw new Error("no yes/no token in the top logprobs");
   }
   return { probability: yes / total, coverage: Math.min(1, total) };
+}
+
+/**
+ * The digest an Ollama at `origin` lists for `model`, or why there is none. Shared by the
+ * backends that can sit in front of an Ollama (`LlmJudge`, `SystemOneJudge`): anything else — a
+ * hosted API, llama.cpp's server — has no `/api/tags`, and gets a name, no digest and a reason.
+ */
+export async function ollamaIdentity(origin: string | undefined, model: string): Promise<JudgeIdentity> {
+  if (!origin) return { model, detail: "no base URL: a hosted API reports no digest" };
+  try {
+    const res = await fetch(`${origin}/api/tags`, { signal: AbortSignal.timeout(5000) });
+    if (!res.ok)
+      return {
+        model,
+        detail: `${origin}/api/tags answered ${res.status}, so not an Ollama: no digest`,
+      };
+    const body = (await res.json()) as {
+      models?: Array<{ name?: string; model?: string; digest?: string }>;
+    };
+    const wanted = model.includes(":") ? model : `${model}:latest`;
+    const entry = body.models?.find((m) => m.name === wanted || m.model === wanted);
+    if (!entry?.digest) return { model, detail: `Ollama at ${origin} does not list ${wanted}` };
+    return {
+      model,
+      digest: entry.digest,
+      detail: `Ollama manifest ${entry.digest.slice(0, 12)}`,
+    };
+  } catch (err) {
+    return {
+      model,
+      detail: `no digest from ${origin}: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
 }
 
 /**
