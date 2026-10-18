@@ -33,6 +33,9 @@
  * The sidecar was trained on both sets (docs/measurements.md, Round 2), so its numbers on them
  * are not measurements, and the output says so.
  *
+ * `--json` adds the judges measured to the file, replacing any of the same name, so judges served
+ * one at a time — a llama-server holds one model — can be measured in separate runs.
+ *
  * `--cases test3` reads the held-out set instead, once for every judge named, each at the
  * threshold the file given by --json registered for it, which a run on the spent sets wrote
  * there first. Log the read in testset3.ts. `--dump <file>` writes every command's score, for
@@ -456,14 +459,27 @@ for (const spec of specs) {
 }
 
 if (out) {
+  // Judges served one at a time — a llama-server holds one model — are measured in separate runs,
+  // so each run adds its judges to the file, replacing any of the same name, and keeps the rest.
   const measured = new Date().toISOString().slice(0, 10);
+  const merge = (kept: unknown, fresh: Array<Record<string, unknown>>) => {
+    const rows = new Map(((kept ?? []) as Array<Record<string, unknown>>).map((r) => [r.name, r]));
+    for (const r of fresh) rows.set(r.name, { ...r, measured });
+    return [...rows.values()];
+  };
+  let existing: Record<string, unknown> = {};
+  try {
+    existing = JSON.parse(readFileSync(out, "utf-8")) as Record<string, unknown>;
+  } catch {
+    // a new file
+  }
   const doc = heldOut
-    ? { ...previous, test3: { measured, judges: results } }
+    ? { ...previous, test3: { judges: merge((previous?.test3 as { judges?: unknown } | undefined)?.judges, results) } }
     : {
-        measured,
+        ...existing,
         sets: { dev: CASES.length, test2: sets[1]?.[1].length },
         rule: `the lowest worst answer among the spent sets' unsafe commands, which carries a ${TARGET * 100}% let-through target at ${CONFIDENCE * 100}% confidence from 59 of them`,
-        judges: results,
+        judges: merge(existing.judges, results),
       };
   writeFileSync(out, `${JSON.stringify(doc, null, 1)}\n`);
   console.log(chalk.gray(`\nwritten to ${out}`));
