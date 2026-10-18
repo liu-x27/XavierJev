@@ -92,7 +92,7 @@ template writes today's date into the prompt and moves the gate's answers
 ([On another server](#on-another-server)), so start it with `--no-jinja`:
 
 ```bash
-llama-server -m <the GGUF> -ngl 99 --no-jinja   # or --chat-template-file eval/llama-cpp/llama3.1-as-ollama.jinja
+llama-server -m <the GGUF> -ngl 99 --no-jinja --port 8080   # or --chat-template-file eval/llama-cpp/llama3.1-as-ollama.jinja
 export AGENT_JUDGE_API_KEY=none AGENT_JUDGE_BASE_URL=http://127.0.0.1:8080/v1 AGENT_JUDGE_MODEL=llama3.1:8b
 ```
 
