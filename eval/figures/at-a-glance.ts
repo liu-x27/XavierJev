@@ -241,7 +241,7 @@ const jevbench = JSON.parse(readFileSync(new URL("../../docs/data/jevbench-order
   const oy = ROW;
   const x0 = 364;
   const { read, held, shouldHaveAsked } = labelled.labelled;
-  panelTitle(x0, "Every command it cleared, read by hand", `llama3.1:8b at 0.2 · ${read.toLocaleString("en-US")} of ${(read + held).toLocaleString("en-US")} cleared`, oy);
+  panelTitle(x0, "Every command it cleared, read one by one", `llama3.1:8b at 0.2 · ${read.toLocaleString("en-US")} of ${(read + held).toLocaleString("en-US")} cleared`, oy);
   const cols = 48;
   const pitch = 6;
   const left = x0 + 2;
@@ -296,7 +296,7 @@ parts.push(`<line x1="24" x2="${W - 24}" y1="${ROW}" y2="${ROW}" stroke="${INK.r
 const svg = [
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" font-family="ui-monospace, Menlo, Consolas, monospace" font-size="11" role="img" aria-labelledby="t d">`,
   `<title id="t">XavierJev at a glance</title>`,
-  `<desc id="d">Six panels. Latency of one gate decision: 27 ms for one question; four questions at once take 89 ms as installed and 107 ms with four parallel slots on a short command, 278 and 867 ms on a 2,000-character one. Naming N before Y moves the gate's worst answer up for all 83 dev-set commands, and 36 safe commands go from cleared to asked. With no false allow, the 95% upper bound on the false-allow rate is 3.9% after 76 unsafe commands, 2% after 149 and 1% after 299. On 1,000 held-out commands from this machine, a fine-tuned Qwen3-0.6B clears 476 to 699 of 733 safe commands at 0 to 5 unsafe let through, against 204 to 402 for prompted llama3.1:8b; at thresholds set beforehand, 656 with 4 let through against 308 with 1. Of 4,000 real commands the gate cleared 1,181, every one read by hand, and 6 should have been asked. choice() picks the option listed first 76% of the time with three options, 61% with four, 38% with five and 33% with six, against 33%, 25%, 20% and 17% by chance; averaged over every order, the hard tier of JevBench goes from 36% to 51% right.</desc>`,
+  `<desc id="d">Six panels. Latency of one gate decision: 27 ms for one question; four questions at once take 89 ms as installed and 107 ms with four parallel slots on a short command, 278 and 867 ms on a 2,000-character one. Naming N before Y moves the gate's worst answer up for all 83 dev-set commands, and 36 safe commands go from cleared to asked. With no false allow, the 95% upper bound on the false-allow rate is 3.9% after 76 unsafe commands, 2% after 149 and 1% after 299. On 1,000 held-out commands from this machine, a fine-tuned Qwen3-0.6B clears 476 to 699 of 733 safe commands at 0 to 5 unsafe let through, against 204 to 402 for prompted llama3.1:8b; at thresholds set beforehand, 656 with 4 let through against 308 with 1. Of 4,000 real commands the gate cleared 1,181, every one read one by one, and 6 should have been asked. choice() picks the option listed first 76% of the time with three options, 61% with four, 38% with five and 33% with six, against 33%, 25%, 20% and 17% by chance; averaged over every order, the hard tier of JevBench goes from 36% to 51% right.</desc>`,
   `<rect width="${W}" height="${H}" rx="10" fill="${SURFACE}"/>`,
   ...parts,
   "</svg>",

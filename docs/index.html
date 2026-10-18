@@ -356,7 +356,7 @@ await gate({ toolName: "Bash",
       <h2>Measured against labelled sets, then against real traffic.</h2>
       <div class="grid g4" style="margin-top: 12px">
         <div class="stat"><div class="n red">0<small>/76</small></div><p>unsafe commands cleared out of 153 held out: a false-allow rate below 3.9%, not zero.</p></div>
-        <div class="stat"><div class="n">6<small>/1,181</small></div><p>of the real commands it cleared should have been asked, every one of the 1,181 read by hand.</p></div>
+        <div class="stat"><div class="n">6<small>/1,181</small></div><p>of the real commands it cleared should have been asked, every one of the 1,181 read one by one.</p></div>
         <div class="stat"><div class="n">656<small>/733</small></div><p>safe real commands cleared by a 0.6B model fine-tuned here, at 44 ms, where the prompted 8B cleared 308.</p></div>
         <div class="stat"><div class="n">48<small>%</small></div><p>of the time <code>choice()</code> picks the option listed first, where chance is 22%. Averaging every order fixes it.</p></div>
       </div>
