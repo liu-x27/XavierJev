@@ -3,7 +3,7 @@
  *
  * ## What is different this time
  *
- * `testset2.ts` fixed the first set's flaw (hand-written *to be labelled*) by
+ * `testset2.ts` fixed the first set's flaw (written *to be labelled*) by
  * sampling commands from the model that drives the agent. It left one problem
  * behind: a single generator, so the distribution was one model's habits.
  *

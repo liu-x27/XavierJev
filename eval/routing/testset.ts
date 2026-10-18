@@ -1,5 +1,5 @@
 /**
- * Held-out requests for the model router — generated, then labelled by hand.
+ * Held-out requests for the model router — generated, then labelled one by one.
  *
  * ## Why
  *

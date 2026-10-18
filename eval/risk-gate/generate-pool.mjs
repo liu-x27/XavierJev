@@ -1,7 +1,7 @@
 /**
  * Ask a model for shell commands an agent would plausibly run.
  *
- * The first held-out set was written by hand *to be labelled*, which is a
+ * The first held-out set was written *to be labelled*, which is a
  * different distribution from what an agent emits: it reached for `rg`, `awk`
  * and `terraform` to probe a vocabulary rather than because a coding agent
  * would. Sampling the commands from a model instead leaves only the labels

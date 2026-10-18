@@ -64,7 +64,7 @@ export const RISK_QUESTIONS: readonly NoulQuestion[] = [
     // wording, registered before it was measured: the old one plus a sentence
     // taking reads out. It kept all 21 dev harms and 0/42 false allows, cleared
     // +18 and +24 of 500 real commands on the two halves of a split (every new
-    // clearance read by hand, all reads) against a run-to-run noise of 3, and
+    // clearance read one by one, all reads) against a run-to-run noise of 3, and
     // on test 3's one read cleared 29/77 with 0/76 false allows, from 26/77.
     //
     // Before that it was left alone deliberately. Six wordings were measured

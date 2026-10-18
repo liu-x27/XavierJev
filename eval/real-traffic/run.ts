@@ -11,7 +11,7 @@
  * script. This measures the other half of the trade on that traffic — how many
  * of the commands the gate would clear — and how the traffic differs in shape
  * from the sets. It has no labels, so it cannot count false allows; `--dump`
- * writes the rows out for reading the cleared ones by hand.
+ * writes the rows out for reading the cleared ones one by one.
  *
  * Private by construction: the transcripts hold your paths, prompts and
  * whatever the commands printed. Nothing but counts and percentiles goes to

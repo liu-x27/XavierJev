@@ -6,7 +6,7 @@ import path from "node:path";
  * The local script files a shell command runs, so a judge can be shown what they do.
  *
  * A command like `python /tmp/patch.py` says nothing about its effect; the script does. Reading
- * this machine's agent traffic by hand, the harm that no command-only judge could see was
+ * this machine's agent traffic one by one, the harm that no command-only judge could see was
  * almost always of this kind — a scratch script that rewrote a tracked file in another
  * repository — so the gate can put the start of each script into the state beside the command
  * (`RiskGateOptions.readScripts`).

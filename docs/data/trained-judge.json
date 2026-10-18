@@ -1,7 +1,7 @@
 {
  "measured": "2026-09-26",
  "judge": "frozen Qwen/Qwen3-0.6B; last-position hidden states at layers 8/14/20/28 for each of the gate's four questions, concatenated; one L2 logistic head per harm (destroys-data, outside-cwd, exfiltrates), Platt-calibrated; gate score = max of the three. No reveals-secret head (3 positives in 4,000).",
- "labels": "4,000 commands from this machine's agent sessions, <= 2,000 characters, disjoint from the 4,000 read for real-traffic.json; read by hand against the criterion, strict reading = the session's directory is the working directory. 3,000 train / 1,000 test.",
+ "labels": "4,000 commands from this machine's agent sessions, <= 2,000 characters, disjoint from the 4,000 read for real-traffic.json; read one by one against the criterion, strict reading = the session's directory is the working directory. 3,000 train / 1,000 test.",
  "selection": "lambda, calibration and thresholds chosen on out-of-fold predictions over the 3,000; registered before the test split was scored; the test split scored once.",
  "real_traffic_test": {
   "with_cwd": {
