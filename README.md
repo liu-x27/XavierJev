@@ -183,8 +183,8 @@ the hook compares with the sidecar in front of it ([sidecar/README.md](sidecar/R
 endpoint, Ollama's or llama.cpp's, all of a decision's questions in one request. It asks only a
 server on this machine and refuses Ollama's cloud models, since the request is the shape a hosted
 decision API takes; it cannot see coverage, which the endpoint normalises away; and it brings no
-threshold, because none of these models has one measured here
-([Beside the decision endpoints](#beside-the-decision-endpoints)).
+threshold of its own: each model needs one measured, and the seven measured here have theirs in
+[Beside the decision endpoints](#beside-the-decision-endpoints).
 
 ## Four decisions an agent loop makes
 
@@ -261,8 +261,9 @@ word list reads the command only, not the scripts.
 four sets: `cases.ts` (83) is the dev set that the wordings, threshold and model were
 chosen on; `testset.ts` (125), `testset2.ts` (96) and `testset3.ts` (153) are held out,
 labelled before any judge saw them, with every read logged in its own docstring. Test 3 has
-been read six times: the first read of the shipped gate, a verification read, a comparison,
-one read to confirm a reworded question, and two by the trained judge. Test 2 is spent, and
+been read seven times: the first read of the shipped gate, a verification read, a comparison,
+one read to confirm a reworded question, two by the trained judge, and one for seven decision
+models beside the 8B. Test 2 is spent, and
 now training data for that judge. `testset.ts` was read once, early, by the configuration of
 the time, and by nothing since.
 
@@ -767,8 +768,8 @@ and 0.8B). llama.cpp v0.6.0 answers it too, with Julia-1 (144M), Laya (421M), Ke
 input, at $0.10 per million tokens.
 
 If what you need is a probability for a yes/no or one-of-*n* question, any of these gives you
-one, from a model trained for the job, and some of them read the state once for several
-questions where the gate here asks its four one after another. What they leave to you is the
+one, from a model trained for the job, and one request can carry all of a decision's questions
+where the gate here sends its four one after another. What they leave to you is the
 threshold: llama.cpp's announcement says to set it per model, OpenAI's guide to set it on
 examples you have labelled yourself. That part is what this repository does, for one
 decision — may this command run unasked:
@@ -785,7 +786,40 @@ decision — may this command run unasked:
   one by one: 6 should have been asked;
 - and it answers Claude Code's PermissionRequest hook.
 
-None of these endpoints or models has been measured here.
+Seven of those models have since been through the same evidence here (2026-10-18, Ollama 0.40.4
+and llama.cpp 0.7.0, all at Q8_0): the gate's four questions, word for word, through
+`SystemOneJudge`. Each got a threshold of its own from one rule, written down before any of
+them was run — the lowest score it gave any of the 85 unsafe commands in the two spent sets —
+and with those committed, test 3 was read once for all of them:
+
+| judge | served by | test 3 at its threshold: safe cleared · unsafe let through | AUC on test 3 | one decision, short · 2,000 characters |
+|---|---|---|---|---|
+| llama3.1:8b, prompted, at the shipped 0.2 | Ollama | 28/77 · **0/76** | 0.845 | 103 · 272 ms |
+| Qwen3-0.6B trained on this machine, at its own line | the sidecar | 30/77 · **0/76** | 0.868 | 40 · 90 ms |
+| nimble 9B | Ollama | 7/77 · **0/76** | 0.808 | 141 · 331 ms |
+| tev1 4B | Ollama | 12/77 · **0/76** | 0.835 | 111 · 217 ms |
+| tev1 0.8B | Ollama | 9/77 · 1/76 | 0.677 | 64 · 103 ms |
+| Julia-1 144M | llama.cpp | 0/77 · 1/76 | 0.564 | 34 · 63 ms |
+| Laya 421M | llama.cpp | 3/77 · **0/76** | 0.689 | 46 · 129 ms |
+| Kev-4B | llama.cpp | 9/77 · **0/76** | 0.880 | 90 · 595 ms |
+| lev 4B | llama.cpp | 3/77 · **0/76** | 0.845 | 117 · 493 ms |
+
+Ranking is not where they fall short: Kev-4B orders test 3 better than any judge here, and lev
+and tev1 about as well as the 8B. The line is. Each puts a few unsafe commands below most safe
+ones — often the criterion's edges, `git rebase --abort` or `npx eslint --fix`, which no model is
+told about — and a line that lets none of the 85 through has to go under the lowest, where it
+clears a fraction of what the 8B's does. Two of the seven lines did not hold out of sample, one
+command in 76 each: a bound of 6.1%, past the 5% the rule aimed at. The 8B's 0.2 does not travel
+either; taken as it is, it lets 21 of the 76 through on nimble and 32 on Julia-1.
+
+One request with four questions was counted, and on llama.cpp timed, as four readings of the
+state, so on a 2,000-character command Kev-4B and lev are slower than the prompted 8B answering
+four separate requests. And the startup self-check caught every swap: with the
+canaries recorded on llama3.1:8b, none of the seven passes as the gate that was measured. The
+trained judge's word list was extended after an earlier read of test 3, so its zero there is
+not quite out of sample. Where the models come from, what their cards say about their training
+data, and the rest of it are in [Decision models](docs/measurements.md#decision-models). Their
+answers are compared, never used as labels.
 
 ## Are the numbers worth thresholding?
 
@@ -852,8 +886,8 @@ After the move the gate's dev set was run again — `allowlist` 23/41 · 0/42, `
 standing up first; the ones published were measured against a local Ollama serving
 `llama3.1:8b`.
 
-**What is not known.** Anything about a judge other than llama3.1:8b beyond the ladder
-above: every other `llm` number here is that one model, at Ollama's default quantisation. Whether a hosted provider's
+**What is not known.** Anything about a judge other than llama3.1:8b beyond the ladder and the
+decision models above: every other `llm` number here is that one model, at Ollama's default quantisation. Whether a hosted provider's
 logprobs agree with a local model's: this path has run against Ollama and llama.cpp's server,
 which agree once they build the same prompt, and against nothing hosted. How much of the
 unsafe traffic an agent actually sends gets through: what the gate cleared of it has been
@@ -868,7 +902,7 @@ never saw. The router's out-of-sample
 error rate is 19%, which is not a number to ship as an automatic decision. Three held-out
 gate sets exist and each carries a log of every time it has been read, because a test set
 consulted repeatedly becomes a dev set whether or not anyone admits it; two are spent, and
-the third has been read six times, so its figures are now weaker evidence than its first read
+the third has been read seven times, so its figures are now weaker evidence than its first read
 was.
 
 ## Development
@@ -881,6 +915,8 @@ npm run build             # the library, to dist/
 npm run eval:risk-gate                    # offline: the allow-list is its default backend
 npm run eval:risk-gate -- --backend llm   # the other evals ask the judge by default:
                                           # routing retry stop snake flappy throughput calibration order latency ladder
+npm run eval:decision-models -- --judges llm:llama3.1:8b,systemone:nimble --json out.json
+                                          # judges side by side on the spent sets (eval/decision-models/run.ts)
 npm run figures                           # redraws docs/at-a-glance.svg and docs/ladder.svg from docs/data/
 npm run eval:risk-gate -- --cases test3   # a held-out set; read its docstring first
 ```
