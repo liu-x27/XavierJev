@@ -2,8 +2,11 @@
 
     python -m unittest discover -s sidecar -p "test_*.py"
 
-torch is needed (CPU is enough); transformers is not. CI runs these beside the mock suite.
+torch is needed (CPU is enough). One check, that packing a request's questions into one pass
+answers as reading each alone, builds a small random model of the sidecar's architecture and so
+needs transformers; without it that check is skipped. CI runs these beside the mock suite.
 """
+import importlib.util
 import json
 import os
 import sys
@@ -154,6 +157,70 @@ class Serving(unittest.TestCase):
     def test_calibrated_is_a_probability(self):
         self.assertAlmostEqual(common.calibrated(0.0, [1.0, 0.0]), 0.5)
         self.assertLess(common.calibrated(-10.0, [1.0, 0.0]), 0.001)
+
+
+class CharTok:
+    """A tokenizer with one token per character, Y and N among them."""
+
+    def __call__(self, text, add_special_tokens=False):
+        return {"input_ids": [ord(c) % 250 + 2 for c in text]}
+
+    def encode(self, text, add_special_tokens=False):
+        return self(text)["input_ids"]
+
+
+class Packing(unittest.TestCase):
+    texts = ["state: ls\nQ: does it delete?\nA:", "state: ls\nQ: does it upload?\nA:", "state: ls\nQ: outside?\nA:"]
+
+    def test_each_segment_after_the_shared_part_is_its_text(self):
+        tok = CharTok()
+        ids, positions, segment, ends = common.packed(tok, self.texts)
+        shared = segment.count(0)
+        self.assertEqual(shared, len("state: ls\nQ: "))
+        for i, text in enumerate(self.texts):
+            mine = [k for k, s in enumerate(segment) if s in (0, i + 1)]
+            self.assertEqual([ids[k] for k in mine], tok(text)["input_ids"])
+            self.assertEqual([positions[k] for k in mine], list(range(len(text))))
+            self.assertEqual(ends[i], mine[-1])
+
+    def test_identical_texts_keep_their_last_token(self):
+        ids, _, segment, ends = common.packed(CharTok(), ["ab", "ab"])
+        self.assertEqual((ids, segment, ends), ([ids[0], ids[1], ids[1]], [0, 1, 2], [1, 2]))
+
+    def test_a_segment_sees_the_shared_part_and_itself(self):
+        mask = common.packed_mask([0, 0, 1, 1, 2], "cpu")[0, 0]
+        self.assertEqual(mask.tolist(), [
+            [True, False, False, False, False],
+            [True, True, False, False, False],
+            [True, True, True, False, False],
+            [True, True, True, True, False],
+            [True, True, False, False, True],
+        ])
+
+    @unittest.skipUnless(importlib.util.find_spec("transformers"), "needs transformers")
+    def test_one_pass_answers_as_separate_passes(self):
+        # A small randomly initialised model of the sidecar's architecture (grouped KV heads,
+        # RoPE), in float32, where packing should agree with reading each text alone to rounding.
+        from transformers import Qwen3Config, Qwen3ForCausalLM
+
+        torch.manual_seed(0)
+        config = Qwen3Config(vocab_size=256, hidden_size=64, intermediate_size=128, num_hidden_layers=2,
+                             num_attention_heads=4, num_key_value_heads=2, head_dim=16, max_position_embeddings=256)
+        tok = CharTok()
+        y, n = common.yn_ids(tok)
+        for attention in ("sdpa", "eager"):
+            config._attn_implementation = attention
+            model = Qwen3ForCausalLM(config).eval()
+            alone = []
+            with torch.no_grad():
+                for text in self.texts:
+                    h = model.model(input_ids=torch.tensor([tok(text)["input_ids"]])).last_hidden_state[0, -1]
+                    lg = model.lm_head(h)
+                    alone.append((lg[y] - lg[n]).item())
+            for got, want in zip(common.request_margins(tok, model, self.texts), alone):
+                self.assertAlmostEqual(got, want, places=4, msg=attention)
+            # the shared part is read once: three texts, one sequence shorter than their sum
+            self.assertLess(len(common.packed(tok, self.texts)[0]), sum(map(len, self.texts)))
 
 
 if __name__ == "__main__":

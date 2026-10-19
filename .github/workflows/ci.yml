@@ -29,6 +29,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      # The sidecar's checks need torch on the CPU and nothing else: no model is downloaded.
+      # The sidecar's checks need torch on the CPU, and transformers for the one that builds a small
+      # random model; no model is downloaded.
       - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - run: pip install transformers==5.14.1
       - run: python -m unittest discover -s sidecar -p "test_*.py" -v

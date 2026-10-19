@@ -123,6 +123,64 @@ def margins(tok, model, texts, batch=16):
     return out
 
 
+def packed(tok, texts):
+    """Several prompts that begin alike — one request's questions about one state — as one
+    sequence in which what they share is read once.
+
+    Each text is tokenized on its own, as `margins` tokenizes it, and the tokens every text begins
+    with go in once, followed by each text's remaining tokens. The split is found on the tokens,
+    not on the strings, so no token is cut at the boundary: the shared part followed by any one
+    segment is that text's own tokenization, token for token. The shared part stops one token
+    short of the shortest text, so that every segment keeps its answer position.
+
+    Returns (input_ids, position_ids, segment, ends): `position_ids` restart at the end of the
+    shared part in every segment, the positions each text has on its own; `segment` is 0 for a
+    shared token and i + 1 for the i-th text's; `ends` is the index of each text's last token."""
+    ids = [tok(t, add_special_tokens=False)["input_ids"] for t in texts]
+    shared, limit = 0, min(len(s) for s in ids) - 1
+    while shared < limit and all(s[shared] == ids[0][shared] for s in ids[1:]):
+        shared += 1
+    input_ids, positions, segment, ends = list(ids[0][:shared]), list(range(shared)), [0] * shared, []
+    for i, s in enumerate(ids):
+        input_ids += s[shared:]
+        positions += range(shared, len(s))
+        segment += [i + 1] * (len(s) - shared)
+        ends.append(len(input_ids) - 1)
+    return input_ids, positions, segment, ends
+
+
+def packed_mask(segment, device):
+    """The 4D mask (True: may attend) for a sequence from `packed`: causal, and a token past the
+    shared part sees the shared part and its own segment, never another's. With it each segment
+    is read as its text would be read alone."""
+    seg = torch.tensor(segment, device=device)
+    causal = torch.ones(len(segment), len(segment), dtype=torch.bool, device=device).tril()
+    return (causal & ((seg[None, :] == 0) | (seg[None, :] == seg[:, None])))[None, None]
+
+
+@torch.no_grad()
+def request_margins(tok, model, texts):
+    """What `margins` gives for one request's texts, from one forward pass over them packed (see
+    `packed`): the state, which every question repeats, is computed once instead of once per
+    question. A mask passed as 4D reaches the attention as it is; transformers adds nothing to it."""
+    y_id, n_id = yn_ids(tok)
+    input_ids, positions, segment, ends = packed(tok, texts)
+    mask = packed_mask(segment, model.device)
+    attention = model.config._attn_implementation
+    if attention == "eager":  # eager attention adds the mask to its scores rather than selecting with it
+        mask = torch.zeros(mask.shape, dtype=model.dtype, device=model.device).masked_fill(~mask, torch.finfo(model.dtype).min)
+    elif attention != "sdpa":
+        raise ValueError(f"a packed request needs sdpa or eager attention, and the model runs {attention}")
+    hidden = model.model(
+        input_ids=torch.tensor([input_ids], device=model.device),
+        position_ids=torch.tensor([positions], device=model.device),
+        attention_mask=mask,
+        use_cache=False,
+    ).last_hidden_state[0, ends, :]
+    lg = model.lm_head(hidden).float()
+    return (lg[:, y_id] - lg[:, n_id]).tolist()
+
+
 def calibrated(margin, platt):
     a, b = platt
     return 1.0 / (1.0 + math.exp(-(a * margin + b)))
