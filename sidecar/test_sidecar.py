@@ -115,6 +115,29 @@ class Identity(unittest.TestCase):
                 f.write('{"threshold": 0.2}')
             self.assertNotEqual(one, common.digest("Qwen/Qwen3-0.6B", "rev-a", cal))
 
+    def test_digest_moves_with_the_scoring_and_keeps_the_old_ones(self):
+        # Judges served batched before 0.8.0 keep their digests, and the canaries recorded on them;
+        # served packed, the same files are another judge.
+        with tempfile.TemporaryDirectory() as d:
+            cal = os.path.join(d, "calibration.json")
+            with open(cal, "w") as f:
+                f.write('{"threshold": 0.1}')
+            old = common.digest("Qwen/Qwen3-0.6B", "rev-a", cal)
+            self.assertEqual(old, common.digest("Qwen/Qwen3-0.6B", "rev-a", cal, scoring="batched"))
+            self.assertNotEqual(old, common.digest("Qwen/Qwen3-0.6B", "rev-a", cal, scoring="packed"))
+
+    def test_calibrations_before_0_8_were_batched(self):
+        self.assertEqual(common.scoring_of({"threshold": 0.1}), "batched")
+        self.assertEqual(common.scoring_of({"scoring": "packed"}), "packed")
+        with self.assertRaisesRegex(ValueError, "unknown scoring"):
+            common.score_request(None, None, ["x"], "sideways")
+
+    def test_calibrate_only_will_not_overwrite_its_source(self):
+        with tempfile.TemporaryDirectory() as d:
+            args = type("Args", (), {"calibrate_only": d, "out": os.path.join(d, "."), "val": "val.jsonl"})()
+            with self.assertRaises(SystemExit):
+                train.calibrate_only(args)
+
     def test_revision_from_the_hub_or_the_local_files(self):
         class Config:
             _commit_hash = "c1899de2"

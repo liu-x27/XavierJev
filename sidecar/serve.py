@@ -1,8 +1,9 @@
 """Serve a judge trained by sidecar/train.py to XavierJev's SidecarJudge, on this machine only.
 
     python sidecar/serve.py --run sidecar/run [--port 8765] [--canaries sidecar/run/canaries.json] [--max-pending 4]
+        [--scoring batched|packed]
 
-GET  /identify  -> {model, digest, detail, questions, threshold, readScripts, modelRevision, recording}
+GET  /identify  -> {model, digest, detail, questions, threshold, readScripts, modelRevision, scoring, recording}
 POST /noul      {state, questions: [{id, ask}]} -> {answers: [{id, probability}]}
 
 It answers only the questions it was trained on, and only in the wording it was trained on: a
@@ -11,6 +12,11 @@ treats as a judge failure and asks the user — a judge asked a question it neve
 the judge that was measured. The digest covers the base model's name and revision, the adapters
 and the calibration, so the gate's self-check notices when any of them changes; and adapters
 trained on one revision of the base model are not served on another.
+
+A request is scored the way its calibration was: one pass for all its questions ("packed",
+calibrations from 0.8.0) or one row per question ("batched", calibrations before). `--scoring`
+serves it the other way, for measuring; the digest then covers that, so canaries recorded on the
+judge as calibrated do not verify it served differently.
 
 `recording` is the canaries file as `npm run sidecar:canaries` wrote it, passed through: the
 hook compares what it says they were recorded on with this judge, not this judge with itself.
@@ -52,6 +58,8 @@ def main():
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--canaries", help="written by `npm run sidecar:canaries`")
     ap.add_argument("--device", default="cuda")
+    ap.add_argument("--scoring", choices=common.SCORINGS,
+                    help="how a request is scored; by default the way calibration.json says it was calibrated")
     ap.add_argument("--max-pending", type=int, default=4,
                     help="requests answered or waiting at once; past that, 503 and the gate asks the user")
     a = ap.parse_args()
@@ -61,6 +69,10 @@ def main():
         cal = json.load(f)
     recording = read_recording(a.canaries) if a.canaries else None
     tok, model = common.load(cal["model"], adapter, cal.get("rank"), a.device)
+    scoring = a.scoring or common.scoring_of(cal)
+    if scoring != common.scoring_of(cal):
+        print(f"warning: calibrated {common.scoring_of(cal)} and served {scoring}: not the judge that was measured, and its"
+              " digest says so", flush=True)
     revision = common.model_revision(cal["model"], model)
     trained_on = cal.get("model_revision")
     if trained_on and trained_on != revision:
@@ -72,12 +84,14 @@ def main():
     pending = threading.BoundedSemaphore(a.max_pending)
     info = {
         "model": f"{cal['model']}+lora",
-        "digest": common.digest(cal["model"], revision, adapter, cal_path),
-        "detail": f"{cal['model']} ({revision[:12]}) with rank-{cal.get('rank')} adapters from {os.path.abspath(a.run)}",
+        "digest": common.digest(cal["model"], revision, adapter, cal_path, scoring=scoring),
+        "detail": f"{cal['model']} ({revision[:12]}) with rank-{cal.get('rank')} adapters from {os.path.abspath(a.run)},"
+                  f" scored {scoring}",
         "questions": list(cal["questions"]),
         "threshold": cal["threshold"],
         "readScripts": cal.get("read_scripts"),
         "modelRevision": revision,
+        "scoring": scoring,
     }
     if recording:
         info["recording"] = recording
@@ -124,7 +138,7 @@ def main():
                 return
             try:
                 with lock:
-                    ms = common.margins(tok, model, texts)
+                    ms = common.score_request(tok, model, texts, scoring)
             finally:
                 pending.release()
             self.reply(200, {"answers": [

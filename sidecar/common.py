@@ -181,6 +181,26 @@ def request_margins(tok, model, texts):
     return (lg[:, y_id] - lg[:, n_id]).tolist()
 
 
+# How a request's questions are put to the model. "batched": one row per question, padded into a
+# batch, as everything before 0.8.0 did. "packed": one pass per request (`request_margins`).
+SCORINGS = ("batched", "packed")
+
+
+def scoring_of(calibration):
+    """How the numbers a calibration was fitted on were computed: what calibration.json says, and
+    "batched" for one written before 0.8.0, which says nothing."""
+    return calibration.get("scoring", "batched")
+
+
+def score_request(tok, model, texts, scoring):
+    """One request's margins, computed the way `scoring` names."""
+    if scoring == "packed":
+        return request_margins(tok, model, texts)
+    if scoring == "batched":
+        return margins(tok, model, texts)
+    raise ValueError(f"unknown scoring {scoring!r}: one of {', '.join(SCORINGS)}")
+
+
 def calibrated(margin, platt):
     a, b = platt
     return 1.0 / (1.0 + math.exp(-(a * margin + b)))
@@ -204,9 +224,11 @@ def model_revision(model_name, model):
     return "unknown"
 
 
-def digest(model_name, revision, *files):
+def digest(model_name, revision, *files, scoring="batched"):
     """One hash over the base model's name and revision and the bytes of each file (the adapters,
-    the calibration), so that a change to any of them changes it."""
+    the calibration), so that a change to any of them changes it — and over how requests are
+    scored, when that is not the "batched" every judge before 0.8.0 was served by, so that their
+    digests stand and a judge served another way than it was calibrated is not the same judge."""
     h = hashlib.sha256()
     for text in (model_name, revision):
         h.update(str(text).encode("utf-8"))
@@ -214,4 +236,6 @@ def digest(model_name, revision, *files):
     for path in files:
         with open(path, "rb") as f:
             h.update(f.read())
+    if scoring != "batched":
+        h.update(b"\0scoring\0" + scoring.encode("utf-8"))
     return h.hexdigest()

@@ -23,14 +23,24 @@ and whether prepare.ts showed the judge scripts, from its .meta.json). The quest
 XavierJev's RISK_QUESTIONS minus reveals-secret, which the word list answers, in the wording
 prepare.ts writes beside the rows.
 
+Validation rows are scored for the calibration the way serve.py will answer them, which
+`--scoring` names and calibration.json records: "packed", one pass per row for all its questions,
+or "batched", one row per question sixteen to a batch, as before 0.8.0. `--calibrate-only RUN`
+trains nothing: it copies RUN's adapters to --out and calibrates them afresh there, with RUN's
+questions, rank and record of training — how a judge calibrated one way is moved to the other.
+
+    python sidecar/train.py --calibrate-only sidecar/run --val val.jsonl --out sidecar/run-packed --scoring packed
+
 What it was measured to do on one machine's traffic is in docs/measurements.md, "A judge
 trained on this machine's traffic"; nothing about another machine's is known.
 """
 import argparse
+import hashlib
 import json
 import math
 import os
 import random
+import shutil
 import sys
 import time
 
@@ -122,9 +132,37 @@ def risk_threshold(gate, scored, risk, confidence):
                                        "unsafe_let_through": sum(1 for g in unsafe if g < threshold)}
 
 
+def calibrate_only(a):
+    """--calibrate-only: RUN's adapters, calibrated afresh in a directory of their own, so RUN's
+    calibration — and the canaries recorded on it — stay as they were."""
+    if os.path.abspath(a.calibrate_only) == os.path.abspath(a.out):
+        sys.exit("--out must be a new directory: calibrating RUN in place would replace the calibration its canaries were recorded on")
+    with open(os.path.join(a.calibrate_only, "calibration.json"), encoding="utf-8") as f:
+        before = json.load(f)
+    questions = {q: spec["ask"] for q, spec in before["questions"].items()}
+    meta_path = a.val[: -len(".jsonl")] + ".meta.json"
+    if os.path.exists(meta_path):
+        with open(meta_path, encoding="utf-8") as f:
+            if json.load(f).get("readScripts") != before.get("read_scripts"):
+                sys.exit("--val was prepared with --read-scripts set differently from RUN's training")
+    os.makedirs(a.out, exist_ok=True)
+    adapter = os.path.join(a.out, "adapter.pt")
+    shutil.copyfile(os.path.join(a.calibrate_only, "adapter.pt"), adapter)
+    a.model, a.rank = before["model"], before.get("rank")
+    t0 = time.time()
+    tok, model = common.load(a.model, adapter, a.rank, a.device)
+    revision = common.model_revision(a.model, model)
+    if before.get("model_revision") and before["model_revision"] != revision:
+        sys.exit(f"{a.model} is now revision {revision}, and RUN's adapters were trained on {before['model_revision']}")
+    with open(os.path.join(a.calibrate_only, "calibration.json"), "rb") as f:
+        was = hashlib.sha256(f.read()).hexdigest()
+    calibrate(a, tok, model, questions, before.get("read_scripts"), before.get("trained_on"), train_rows=None, t0=t0,
+              extra={"recalibrated": {"from_calibration_sha256": was, "scoring_before": common.scoring_of(before)}})
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--train", required=True)
+    ap.add_argument("--train", help="required unless --calibrate-only")
     ap.add_argument("--val", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--questions", help="default: <train>.questions.json, written by prepare.ts")
@@ -143,7 +181,17 @@ def main():
     ap.add_argument("--calib-share", type=float, default=0.5, help="with --risk: the share of validation rows that fit the calibration")
     ap.add_argument("--calib", help="rows to fit the calibration on, held out of training, so that every validation "
                     "row is left to accept a risk; prepared like --train and disjoint from it")
+    ap.add_argument("--scoring", choices=common.SCORINGS, default="batched",
+                    help="how validation rows are scored for the calibration: the way serve.py will answer them")
+    ap.add_argument("--calibrate-only", metavar="RUN", help="train nothing: copy RUN's adapters to --out and calibrate "
+                    "them there afresh, with RUN's questions, rank and record of training")
+    ap.add_argument("--device", default="cuda", help="with --calibrate-only: cpu only to try it out")
     a = ap.parse_args()
+    if a.calibrate_only:
+        calibrate_only(a)
+        return
+    if not a.train:
+        ap.error("--train is required unless --calibrate-only")
     random.seed(a.seed)
     torch.manual_seed(a.seed)
     with open(a.questions or a.train[: -len(".jsonl")] + ".questions.json", encoding="utf-8") as f:
@@ -277,6 +325,25 @@ def main():
     model.eval()
     common.merge_lora(model)
 
+    trained_on = {"pairs": n_main, "extra_pairs": len(rows) - n_main, "extra_weight": a.extra_weight if a.extra else 0, "epochs": a.epochs}
+    calibrate(a, tok, model, QUESTIONS, read_scripts, trained_on, train_rows=read(a.train), t0=t0)
+
+
+def per_row_margins(tok, model, rows, questions, scoring):
+    """Each row's margin for each question. "packed": one request per row, as serve.py answers it.
+    "batched": every row's text for one question, sixteen to a batch by length, as before 0.8.0 —
+    and only rows whose label for that question is known, which is the batching those
+    calibrations were fitted on, so that one reproduces them."""
+    if scoring == "packed":
+        out = [dict(zip(questions, common.request_margins(tok, model, [common.prompt(tok, r["state"], ask) for ask in questions.values()])))
+               for r in rows]
+        return lambda q, known: [out[i][q] for i in known]
+    return lambda q, known: common.margins(tok, model, [common.prompt(tok, rows[i]["state"], questions[q]) for i in known])
+
+
+def calibrate(a, tok, model, QUESTIONS, read_scripts, trained_on, train_rows, t0, extra=None):  # noqa: N803
+    """Fit each question's Platt parameters and set the threshold, on the merged model, and write
+    calibration.json to --out."""
     val = read(a.val)
     # By default the same validation rows fit the calibration and set the threshold. With --risk
     # they are split: one share fits each question's Platt parameters, and the rest, which the
@@ -286,7 +353,7 @@ def main():
     fit_rows, pick_rows = val, val
     if a.calib:
         fit_rows = read(a.calib)
-        if shares_rows(fit_rows, read(a.train)):
+        if train_rows is not None and shares_rows(fit_rows, train_rows):
             sys.exit("--calib shares rows with --train: the calibration would be fitted on rows the judge trained on")
     elif a.risk is not None:
         ordered = val[:]
@@ -294,12 +361,13 @@ def main():
         cut = int(len(ordered) * a.calib_share)
         fit_rows, pick_rows = ordered[:cut], ordered[cut:]
     cal = {}
+    fit = per_row_margins(tok, model, fit_rows, QUESTIONS, a.scoring)
     for q, ask in QUESTIONS.items():
-        known = [r for r in fit_rows if r["labels"].get(q) in (0, 1)]
-        z = common.margins(tok, model, [common.prompt(tok, r["state"], ask) for r in known])
-        cal[q] = {"ask": ask, "platt": platt(z, [r["labels"][q] for r in known])}
+        known = [i for i, r in enumerate(fit_rows) if r["labels"].get(q) in (0, 1)]
+        cal[q] = {"ask": ask, "platt": platt(fit(q, known), [fit_rows[i]["labels"][q] for i in known])}
     scored = [r for r in pick_rows if r["unsafe"] in (0, 1)]
-    per_q = {q: common.margins(tok, model, [common.prompt(tok, r["state"], QUESTIONS[q]) for r in scored]) for q in QUESTIONS}
+    pick = per_row_margins(tok, model, scored, QUESTIONS, a.scoring)
+    per_q = {q: pick(q, range(len(scored))) for q in QUESTIONS}
     gate = [1.0 if r["secret"] else max(common.calibrated(per_q[q][i], cal[q]["platt"]) for q in QUESTIONS) for i, r in enumerate(scored)]
     if a.risk is None:
         threshold, counts = threshold_and_counts(gate, scored)
@@ -323,7 +391,9 @@ def main():
         "threshold_rule": rule,
         "validation": counts,
         "calibrated_on": ("rows held out of training" if a.calib else "the validation rows"),
-        "trained_on": {"pairs": n_main, "extra_pairs": len(rows) - n_main, "extra_weight": a.extra_weight if a.extra else 0, "epochs": a.epochs},
+        "scoring": a.scoring,
+        "trained_on": trained_on,
+        **(extra or {}),
     }
     with open(os.path.join(a.out, "calibration.json"), "w", encoding="utf-8") as f:
         json.dump(calibration, f, indent=1)

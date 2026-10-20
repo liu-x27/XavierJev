@@ -90,6 +90,12 @@ export interface SidecarInfo {
   readScripts?: boolean | null;
   /** The base model's revision: the hub snapshot, or a hash of a local model's files. */
   modelRevision?: string;
+  /**
+   * How a request is put to the model: "packed", all its questions in one pass (calibrations
+   * from 0.8.0), or "batched", one row per question; absent before 0.8.0, which was batched. The
+   * digest covers it, so a judge served another way than it was calibrated does not verify.
+   */
+  scoring?: "batched" | "packed";
   /** The canaries it serves, with what they were recorded on. */
   recording?: CanaryRecording;
 }
