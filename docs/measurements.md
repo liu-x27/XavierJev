@@ -1712,3 +1712,119 @@ faster than the 8B's 103 ms, and nimble, tev1 and lev more slowly.
 was not done. Whether a llama.cpp flag makes Kev-4B or lev read the state once. How Clef,
 OpenJev or the hosted Decisions API would do. And anything about traffic: no real command was
 put to them.
+
+## One pass for a request's questions
+
+*2026-10-20, `python sidecar/compare_scoring.py` at `aa5a227`, PyTorch 2.11.0+cu128 and transformers
+5.14.1 on one RTX 5080 Laptop GPU with nothing else running. Aggregates in
+`docs/data/sidecar-scoring.json`.*
+
+The sidecar answers three of the gate's questions; the fourth, `reveals-secret`, comes from the
+word list. Until now it put them to the model as three rows of one padded batch. Each row was the
+system prompt, the state and one question, so the state, which is nearly all of a long command's
+tokens, was read three times. `--scoring packed` reads it once, in four steps:
+
+- the three prompts are tokenized separately;
+- the tokens they all begin with go in once, followed by each question's own tokens;
+- each segment's positions continue from the end of the shared part;
+- a 4D mask lets a segment see the shared part and itself, and no other segment.
+
+That is one forward pass, with the answer read at three positions. The split is found on the
+tokens, not on the strings, so the shared part plus any one segment is exactly that prompt's own
+tokenization.
+
+**The rule, before the run.** It was written into `compare_scoring.py`'s docstring and committed
+(`aa5a227`) before any of the rows below had been scored either way. Packed would become the
+default only if all four held:
+
+1. every segment is its text's own tokenization, ids and positions;
+2. against a float32 run of the same merged weights, packed's mean error in the margin is at most
+   1.05 times the batched path's, and its 99th percentile at most 1.10 times;
+3. no gate score moves by 1.0 log-odds or more;
+4. the median 2,000-character request is faster.
+
+**The rows.** The dev set and test 2 (179), plus the trained judge's own 3,581 training and 600
+validation rows from this machine. That is 4,360 requests and 13,080 margins, all of them spent;
+no held-out set was read. The table also has the offline batching that `score.py` and `train.py`'s
+calibration used: sixteen rows of one question to a batch, by length. Its distance from the batched
+path is the distance the threshold already lives with, between the numbers it was drawn on and the
+numbers it is applied to.
+
+| | batched (served until now) | packed | offline batching |
+|---|---|---|---|
+| tokens through the model per request, mean · largest | 691 · 3,975 | 294 · 1,388 | — |
+| margin error against float32, mean · p99 · largest | 0.0566 · 0.191 · 0.976 | 0.0597 · 0.202 · 0.754 | 0.0573 · 0.197 · 0.629 |
+| margin difference from batched, p99 · largest | — | 0.25 · 1.06 | 0.25 · 0.88 |
+| gate score's move from batched, log-odds p99 · largest | — | 0.155 · 0.387 | 0.155 · 0.406 |
+| verdicts changed at the judge's threshold, of 4,360 | — | 12, one unsafe now cleared | 10, none |
+| dev · test 2 at the threshold | 27/41 · 1/42 and 26/53 · 0/43 | the same | the same |
+| one request, median: short · 1,000 · 2,000 characters | 46.2 · 50.4 · 87.7 ms | 46.6 · 45.0 · 63.3 ms | — |
+
+How the four held:
+
+- **Tokens** held: 0 of 13,080 segments differ.
+- **No gross change** held: the largest move was 0.39 log-odds.
+- **Speed** held: 63 ms against 88 ms at 2,000 characters.
+- **Accuracy** failed. Packed's mean error is 1.055 times the batched path's, against a limit of 1.05;
+  its 99th percentile, at 1.059 times, is inside its own limit.
+
+So packed did not become the default. `--scoring packed` is there for serving, scoring and
+calibrating that way, by choice.
+
+What it says:
+
+- **Short commands are no faster.** At a few hundred tokens a forward pass costs its kernel
+  launches, not its tokens, and packing changes the tokens.
+- **Long ones are, by a factor that varies.** At 2,000 characters this run went from 88 to 63 ms.
+  A run the same morning, interrupted before its float32 pass, measured 108 and 53 ms: 1.4 to 2
+  times.
+- **The accuracy difference is real but small.** It is 0.003 in mean margin. The bfloat16 logits
+  the margins come from are themselves rounded in steps of 0.0625 at these magnitudes. Packed is
+  further from float32 on average and closer at the extreme (0.75 against 0.98). Why is not known.
+  The two run the same computation at different matrix shapes, and nothing here separates that from
+  anything else.
+- **Verdicts barely move, and float32 moves as many.** Run in float32, the same weights change 13
+  verdicts against the batched path, two more than the 10 the offline batching changes and close
+  to packed's 12. The unsafe row packed newly clears is the validation row the threshold was drawn
+  at; float32 clears it too. A line placed exactly on one row's score is moved by any change in how
+  that score is computed.
+
+**Calibrating again without training.** `train.py --calibrate-only` took the shipped judge's
+adapters and calibrated them again, batched:
+
+- the Platt parameters agree to the six decimals the shipped file keeps (the largest difference is
+  4·10⁻⁷);
+- the validation counts are identical, 361 cleared and one let through;
+- the threshold moves by 5·10⁻⁹. The shipped one was taken from `score.py`'s scores of all 600
+  validation rows; this one is from `train.py`'s 597 labelled ones, a different batching.
+
+Served as it ships, through the gate end to end, it scores the dev set 27/41 · 1/42 and test 2
+26/53 · 0/43 with the self-check as measured: the same as on 2026-10-18, at 54 ms mean and 94 ms
+on 2,000 characters.
+
+## Which attention kernel answers without a mask
+
+*Same day, `python sidecar/profile_attention.py` on the base Qwen3-0.6B, on PyTorch 2.11.0+cu128
+and on 2.14.1+cu130 in an environment of its own; one forward pass, median of 20.*
+
+Without a mask, transformers 5.14.1 hands Qwen3's 8 key/value heads to SDPA with `enable_gqa=True`
+and `is_causal=True`. A padding mask with no padding in it counts as no mask: transformers drops it.
+With a mask, transformers repeats the heads to 16 itself and passes the mask. Which kernel takes
+the maskless call depends on the build; neither Windows build has flash attention compiled in.
+
+| PyTorch | kernel without a mask | time without / with a 4D mask, at 256 · 1,024 · 2,048 tokens | peak memory at 2,048 tokens, without · with |
+|---|---|---|---|
+| 2.11.0+cu128 | math: float32 SIMT matrix products and a separate softmax | 1.21 · 1.95 · 2.76 (2.73 at a batch of 4) | 701 · 61 MB |
+| 2.14.1+cu130 | memory-efficient (`fmha_cutlassF`) | 0.99 · 0.99 · 0.76 (0.76 at a batch of 4) | 53 · 61 MB |
+
+Asked directly for each kernel with `enable_gqa=True` and `is_causal=True`, 2.11's
+memory-efficient kernel refuses and 2.14's takes the call. cuDNN's takes it on both versions, but
+2.11 doesn't dispatch to it. PyTorch's own documentation agrees: for 2.11 and 2.13 it lists only
+flash and math for grouped-query attention, and for 2.14 it adds the memory-efficient kernel. On
+2.11, then, a maskless call falls back to math, which is up to 2.8 times slower here, with 11 times
+the memory. On 2.14 the maskless call is the fastest of the two, since the kernel can skip what
+causality hides.
+
+The sidecar's own paths always carry a mask: a padded batch has one, and so does packing. They
+never took the math path. What would take it on 2.11 is a single prompt alone, or a batch whose
+prompts all have the same length.

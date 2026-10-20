@@ -592,6 +592,24 @@ calibrates, and serves the result to `SidecarJudge` with its own threshold and c
 ([sidecar/README.md](sidecar/README.md);
 [A judge trained on this machine's traffic](docs/measurements.md#a-judge-trained-on-this-machines-traffic)).
 
+The sidecar puts its three questions to the model as three rows, so a long command is read three
+times. `--scoring packed` reads it once instead: one sequence holding the shared beginning
+followed by each question's tail, with a 4D mask so each tail sees only the beginning and itself,
+and each tail's positions continuing from where the shared part ends. On a 2,000-character command
+that cuts the tokens per request from about 2,600 to about 930, and the time from 88 to 63 ms in
+one run (108 to 53 ms in another). Short commands are no faster.
+
+It is not the default. A rule written down before the comparison was run asked four things of it:
+identical tokens, accuracy no worse than 1.05 times the current path's mean error against float32,
+no gate score moving by a whole log-odds, and more speed. Across 13,080 margins from 4,360
+requests it met three. Its mean error came out at 1.055 times, an extra 0.003 in a margin that
+bfloat16 rounds in steps of 0.0625. On the dev set and test 2 it changed no verdict
+([One pass for a request's questions](docs/measurements.md#one-pass-for-a-requests-questions)).
+The same day `sidecar/profile_attention.py` showed why transformers is so much slower here when
+it is given no mask. On PyTorch 2.11 the grouped-query call falls back to math attention, up to
+2.8 times slower with 11 times the memory. 2.14 sends it to the memory-efficient kernel
+([Which attention kernel answers](docs/measurements.md#which-attention-kernel-answers-without-a-mask)).
+
 ## On another server
 
 `npm run eval:llama-cpp` puts the gate on llama.cpp's `llama-server` beside Ollama, both
@@ -870,9 +888,12 @@ with anything but a loopback server refused; a timeout in each
 of the four decisions cancelling the judge's request, not only the wait for it, down to the
 sidecar and the decision endpoint seeing their connection dropped; a resumable eval file refusing a second judge; and the bounds
 `eval/stats.ts` puts beside a count. The sidecar's Python has its own checks,
-`python -m unittest discover -s sidecar`, which CI runs on a CPU build of torch: the threshold
-counted at the value saved, an adapter file missing a tensor refused, the digest moving with
-the base model's revision, and the server's refusals.
+`python -m unittest discover -s sidecar`, which CI runs on a CPU build of torch with transformers:
+the threshold counted at the value saved, an adapter file missing a tensor refused, the digest
+moving with the base model's revision and with how a request is scored, `--calibrate-only`
+refusing to overwrite the run it starts from, the server's refusals, and a packed request
+answering as its questions read one by one, on a small random model of the sidecar's architecture
+under both attention implementations.
 
 Evals that append to a file and resume from it (`eval:jevbench`, `eval:option-order`,
 `eval:real-traffic --checkpoint`) write `<file>.run.json` beside it, naming the backend, the

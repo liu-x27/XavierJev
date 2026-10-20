@@ -86,12 +86,33 @@ does not already catch. `sidecar/run/` gets `adapter.pt` and `calibration.json`;
 `python sidecar/score.py --run sidecar/run --rows test.jsonl --out scores.jsonl` scores held-out
 rows offline, for measuring before you trust it.
 
+How a request is put to the model is a choice, recorded in calibration.json as `scoring`:
+
+- `batched`, the default and all there was before 0.8.0, scores one row per question;
+- `packed` (`--scoring packed`) reads the shared state once, and each question against it.
+
+serve.py and score.py score the way the calibration was fitted, so a threshold is applied to
+numbers computed the way it was drawn on. Packed is about a third faster on 2,000-character
+commands and no faster on short ones. Its errors against float32 are about 5% larger on average,
+which kept it from becoming the default (docs/measurements.md, "One pass for a request's
+questions"). To move a trained judge to the other scoring without training it again:
+
+```bash
+python sidecar/train.py --calibrate-only sidecar/run --val val.jsonl --out sidecar/run-packed --scoring packed
+```
+
+This copies the adapters to a new directory and calibrates them there, so the original run and
+the canaries recorded on it stay as they were. Record the canaries again for the new one. Run
+batched, it reproduced a shipped calibration to the six decimals the file keeps.
+`python sidecar/compare_scoring.py` puts the two scorings side by side on prepared rows, against
+float32, and prints aggregates only.
+
 ## 4. Serve and record
 
 ```bash
 python sidecar/serve.py --run sidecar/run                     # :8765, this machine only
 npm run sidecar:canaries -- --out sidecar/run/canaries.json   # once, with the server up
-python sidecar/serve.py --run sidecar/run --canaries sidecar/run/canaries.json [--max-pending 4]
+python sidecar/serve.py --run sidecar/run --canaries sidecar/run/canaries.json [--max-pending 4] [--scoring packed]
 npm run claude-code -- --backend sidecar [--read-scripts]
 ```
 
