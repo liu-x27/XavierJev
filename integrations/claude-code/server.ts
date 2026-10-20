@@ -30,12 +30,10 @@ import { appendFileSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import express from "express";
-import { checkGate, createRiskGate, GATE_CANARIES, type GateCanary } from "../../src/gate.js";
-import { LlmJudge } from "../../src/llm.js";
-import { recordingProblems, SidecarJudge } from "../../src/sidecar.js";
-import type { JudgeBackend } from "../../src/types.js";
+import { checkGate, createRiskGate } from "../../src/gate.js";
 import { localOnly } from "../local-only.js";
 import { decide, type PermissionRequestInput } from "./decide.js";
+import { hookJudge } from "./judge.js";
 
 const arg = (name: string) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -48,42 +46,11 @@ const logPath = arg("log") ?? path.join(homedir(), ".xavierjev", "claude-code.js
 const readScripts = process.argv.includes("--read-scripts");
 const allowUnverified = process.argv.includes("--allow-unverified");
 
-// The shipped judge, or a trained one served by sidecar/serve.py, which brings its own threshold
-// and canaries: its probabilities are on its own scale.
-let judge: JudgeBackend;
-let threshold = 0.2;
-let canaries: readonly GateCanary[] = GATE_CANARIES;
-let recordedOn: { model: string; digest: string } | undefined;
-let unverifiedSetup: string[] = [];
-if (arg("backend") === "sidecar") {
-  const sidecar = new SidecarJudge({ url: arg("sidecar-url") ?? process.env.XAVIERJEV_SIDECAR_URL });
-  const info = await sidecar.info().catch((err: unknown) => {
-    console.error(`No sidecar: ${err instanceof Error ? err.message : String(err)} (start sidecar/serve.py first).`);
-    process.exit(1);
-  });
-  if (!info.recording?.canaries?.length) {
-    console.error("The sidecar has no recorded canaries: run `npm run sidecar:canaries` once after training.");
-    process.exit(1);
-  }
-  judge = sidecar;
-  threshold = info.threshold;
-  canaries = info.recording.canaries;
-  // What the canaries were recorded on, not what the sidecar says it is now: checkGate compares the two.
-  recordedOn = info.recording.recordedOn;
-  unverifiedSetup = recordingProblems(info, { readScripts });
-} else {
-  if (!(process.env.AGENT_JUDGE_API_KEY || process.env.AGENT_JUDGE_BASE_URL)) {
-    console.error("No judge: set AGENT_JUDGE_API_KEY, AGENT_JUDGE_BASE_URL and AGENT_JUDGE_MODEL (see .env.example).");
-    process.exit(1);
-  }
-  const llm = new LlmJudge();
-  const capability = await llm.probe();
-  if (!capability.logprobs) {
-    console.error(`${llm.name} cannot be a gate: ${capability.detail}`);
-    process.exit(1);
-  }
-  judge = llm;
-}
+const { judge, threshold, canaries, recordedOn, setupProblems: unverifiedSetup } = await hookJudge({
+  backend: arg("backend"),
+  sidecarUrl: arg("sidecar-url"),
+  readScripts,
+});
 const gate = createRiskGate({ backend: judge, autoAllowBelow: threshold, readScripts });
 const check = await checkGate(gate, canaries, recordedOn);
 const problems = [...unverifiedSetup, ...check.problems];

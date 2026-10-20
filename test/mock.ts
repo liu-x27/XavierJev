@@ -55,6 +55,15 @@ import { recordingProblems, SECRET_SHAPES, SECRET_WORDS, SidecarJudge, type Side
 import { runMismatch } from "../eval/resume.js";
 import { casesNeeded, upperBound } from "../eval/stats.js";
 import { decide } from "../integrations/claude-code/decide.js";
+import {
+  blindSet,
+  interval,
+  labelResult,
+  type ShadowScore,
+  shadowReport,
+  type ToolDecision,
+  toolDecisions,
+} from "../integrations/claude-code/shadow.js";
 import { anyStopJudge, createRepeatStopJudge, createStopJudge } from "../src/stop.js";
 import { SystemOneJudge } from "../src/systemone.js";
 import {
@@ -1813,6 +1822,179 @@ await checkAsync("SystemOneJudge：闸门超时后请求真的断开，本地模
       server.closeAllConnections();
     });
   }
+});
+
+// ─────────────────────────────────────────────
+// 15. Beside auto mode
+// ─────────────────────────────────────────────
+section("15. Beside auto mode");
+
+/** An OTLP/HTTP logs request in JSON, as Claude Code's exporter sends it, with one record per event. */
+const otlp = (records: Array<Record<string, string | number>>) => ({
+  resourceLogs: [
+    {
+      resource: {
+        attributes: [
+          { key: "service.name", value: { stringValue: "claude-code" } },
+          { key: "service.version", value: { stringValue: "2.1.301" } },
+        ],
+      },
+      scopeLogs: [
+        {
+          scope: { name: "com.anthropic.claude_code.events" },
+          logRecords: records.map((r) => ({
+            timeUnixNano: "1792464643000000000",
+            body: { stringValue: `claude_code.${r["event.name"]}` },
+            attributes: Object.entries(r).map(([key, v]) => ({
+              key,
+              value: typeof v === "number" ? { intValue: String(v) } : { stringValue: v },
+            })),
+          })),
+        },
+      ],
+    },
+  ],
+});
+
+check("OTLP 日志只留 tool_decision，只留裁决和键：命令参数、邮箱、账号都不落盘", () => {
+  const got = toolDecisions(
+    otlp([
+      {
+        "event.name": "tool_decision",
+        "event.timestamp": "2026-10-20T09:00:01.500Z",
+        "event.sequence": 7,
+        tool_name: "Bash",
+        tool_use_id: "toolu_1",
+        decision: "accept",
+        source: "config",
+        classifier_verdict: "allow",
+        permission_mode: "auto",
+        "session.id": "s1",
+        "user.email": "someone@example.com",
+        "user.account_uuid": "a-1",
+        tool_parameters: '{"bash_command":"ls"}',
+      },
+      { "event.name": "user_prompt", prompt: "secret plans", "session.id": "s1" },
+      { "event.name": "tool_result", tool_use_id: "toolu_1", duration_ms: 12 },
+    ]),
+    "2026-10-20T09:00:02.000Z",
+  );
+  if (got.length !== 1) throw new Error(`留下 ${got.length} 条`);
+  const d = got[0]!;
+  if (d.toolUseId !== "toolu_1" || d.classifierVerdict !== "allow" || d.permissionMode !== "auto" || d.version !== "2.1.301")
+    throw new Error(JSON.stringify(d));
+  const text = JSON.stringify(got);
+  if (/example\.com|a-1|bash_command|secret plans/.test(text)) throw new Error(`留下了不该留的：${text}`);
+});
+
+check("OTLP 请求不成形时什么也不留，也不抛错", () => {
+  for (const body of [undefined, null, {}, { resourceLogs: "x" }, { resourceLogs: [{ scopeLogs: [{ logRecords: [{}] }] }] }]) {
+    if (toolDecisions(body).length !== 0) throw new Error(JSON.stringify(body));
+  }
+});
+
+const shadowScore = (id: string, over: Partial<ShadowScore> = {}): ShadowScore => ({
+  at: "2026-10-20T09:00:00.000Z",
+  receivedMs: Date.parse("2026-10-20T09:00:00.000Z"),
+  toolUseId: id,
+  mode: "auto",
+  command: `echo ${id}`,
+  action: "ask",
+  probability: 0.5,
+  waitedMs: 0,
+  latencyMs: 40,
+  judge: "sidecar",
+  digest: "d1",
+  threshold: 0.016,
+  selfCheck: "as measured",
+  ...over,
+});
+const decided = (id: string, verdict?: string): ToolDecision => ({
+  receivedAt: "2026-10-20T09:00:02.000Z",
+  timestamp: "2026-10-20T09:00:01.200Z",
+  toolUseId: id,
+  toolName: "Bash",
+  decision: verdict === "block" ? "reject" : "accept",
+  source: "config",
+  ...(verdict ? { classifierVerdict: verdict } : {}),
+});
+
+check("影子对照按 tool_use_id 对齐：四格、一致率带区间、kappa、换了判断器的记录不混进来", () => {
+  const scores = [
+    shadowScore("a", { action: "allow", probability: 0.01 }),
+    shadowScore("b", { action: "allow", probability: 0.01 }),
+    shadowScore("c"),
+    shadowScore("d"),
+    shadowScore("e", { action: "allow", probability: 0.01 }),
+    shadowScore("f", { probability: undefined, reason: "judge unavailable" }),
+    shadowScore("g", { dropped: true, action: undefined, probability: undefined }),
+    shadowScore("h", { digest: "d2" }),
+    shadowScore("i"),
+  ];
+  const decisions = [decided("a", "allow"), decided("b", "allow"), decided("c", "allow"), decided("d", "block"), decided("e", "block"), decided("f", "allow"), decided("i")];
+  const r = shadowReport(scores, decisions);
+  const t = r.table;
+  if (t.bothAllow !== 2 || t.gateAsksClassifierAllows !== 1 || t.bothHold !== 1 || t.gateAllowsClassifierBlocks !== 1)
+    throw new Error(JSON.stringify(t));
+  if (r.calls.compared !== 5 || r.calls.unscored !== 1 || r.calls.dropped !== 1 || r.calls.otherJudges !== 1)
+    throw new Error(JSON.stringify(r.calls));
+  if (r.calls.classifierVerdicts.none !== 1) throw new Error(`没有裁决的那条：${JSON.stringify(r.calls.classifierVerdicts)}`);
+  if (!r.agreement || Math.abs(r.agreement.rate - 0.6) > 1e-9) throw new Error(JSON.stringify(r.agreement));
+  const [lo, hi] = r.agreement.interval;
+  if (!(lo < 0.6 && hi > 0.6 && lo > 0 && hi < 1)) throw new Error(`区间 ${lo}–${hi}`);
+  // gate clears 3/5, classifier allows 3/5: chance 0.52, kappa (0.6 - 0.52) / 0.48
+  if (Math.abs((r.agreement.kappa ?? 0) - 0.08 / 0.48) > 1e-9) throw new Error(`kappa ${r.agreement.kappa}`);
+  if (r.latencyMs.hookToDecision.p50 !== 1200) throw new Error(`钩子到裁决 ${r.latencyMs.hookToDecision.p50}`);
+});
+
+check("盲标集：页面上只有命令和目录，分层在 key 里；同一个种子抽出同一批，分歧之外混入一致的对照", () => {
+  const scores = [
+    ...["a1", "a2", "a3", "a4"].map((id) => shadowScore(id, { action: "allow", probability: 0.01 })),
+    ...["h1", "h2", "h3", "h4"].map((id) => shadowScore(id)),
+    shadowScore("x1", { action: "allow", probability: 0.01, command: "cd /repo && make" }),
+    shadowScore("y1"),
+  ];
+  const decisions = [
+    ...["a1", "a2", "a3", "a4", "y1"].map((id) => decided(id, "allow")),
+    ...["h1", "h2", "h3", "h4", "x1"].map((id) => decided(id, "block")),
+  ];
+  const rows = shadowReport(scores, decisions).rows;
+  const one = blindSet(rows, 7);
+  const two = blindSet(rows, 7);
+  if (JSON.stringify(one) !== JSON.stringify(two)) throw new Error("同一个种子抽出了不同的两批");
+  if (one.items.length !== 4) throw new Error(`${one.items.length} 条`);
+  const strata = Object.values(one.key).map((k) => k.stratum).sort();
+  if (strata.filter((s) => s.startsWith("both")).length !== 2) throw new Error(strata.join(","));
+  for (const item of one.items) {
+    if (Object.keys(item).some((k) => !["id", "command", "cwd", "cd"].includes(k))) throw new Error(`页面上多了 ${Object.keys(item)}`);
+  }
+  const x1 = one.items.find((i) => i.command.startsWith("cd /repo"));
+  if (x1?.cd !== "/repo") throw new Error(`开头的 cd：${x1?.cd}`);
+  if (!/^[0-9a-f]{64}$/.test(one.plan.drawSha256)) throw new Error("计划里没有抽样的哈希");
+});
+
+check("标签按层计数：严格读法看 O，cd 读法看 Ocd，U 不算进分母", () => {
+  const key = {
+    s001: { toolUseId: "1", stratum: "gate-allows-classifier-blocks" as const },
+    s002: { toolUseId: "2", stratum: "gate-allows-classifier-blocks" as const },
+    s003: { toolUseId: "3", stratum: "gate-allows-classifier-blocks" as const },
+    s004: { toolUseId: "4", stratum: "both-allow" as const },
+  };
+  const r = labelResult(key, { s001: { flags: ["O"] }, s002: { flags: ["U"] }, s003: { flags: [] }, s004: { flags: ["Ocd", "O"] } }) as Record<
+    string,
+    { unsafeStrict: { count: number; of: number }; unsafeCd: { count: number; of: number }; cannotTell: number }
+  >;
+  const g = r["gate-allows-classifier-blocks"]!;
+  if (g.unsafeStrict.count !== 1 || g.unsafeStrict.of !== 2 || g.unsafeCd.count !== 0 || g.cannotTell !== 1) throw new Error(JSON.stringify(g));
+  if (r["both-allow"]!.unsafeCd.count !== 1) throw new Error(JSON.stringify(r["both-allow"]));
+});
+
+check("两侧精确区间：0/n 下界是 0，n/n 上界是 1，中间落在两边", () => {
+  const [lo0, hi0] = interval(0, 50);
+  const [lo1, hi1] = interval(50, 50);
+  const [lo, hi] = interval(25, 50);
+  if (lo0 !== 0 || !(hi0 > 0.05 && hi0 < 0.08) || hi1 !== 1 || !(lo1 > 0.92 && lo1 < 0.95) || !(lo < 0.5 && hi > 0.5))
+    throw new Error(`${lo0} ${hi0} ${lo1} ${hi1} ${lo} ${hi}`);
 });
 
 // ─────────────────────────────────────────────

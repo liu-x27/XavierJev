@@ -145,6 +145,84 @@ session of real use. Claude Code already lets some read-only commands through by
 so what share of the prompts that do reach the hook it saves is not the held-out sets'
 third, and is not known yet.
 
+### Beside auto mode, watching only
+
+Auto mode doesn't ask you; its classifier decides, and the PermissionRequest hook above never
+sees those calls. Since 2.1.301, Claude Code's OpenTelemetry `tool_decision` event carries the
+classifier's verdict (`allow`, `block`, `no_verdict`, `unavailable`) and the permission mode,
+along with the `tool_use_id` it also gives a PreToolUse hook. `npm run claude-code:shadow` uses
+that to put the gate next to the classifier without touching either. Its PreToolUse route
+answers every call at once with an empty 200, which is no decision, and only then scores the Bash
+command. Its `/v1/logs` route takes the OTLP export and keeps each `tool_decision` cut down to
+its verdict and keys; prompts, tool parameters and account fields are dropped before anything is
+written.
+
+```bash
+npm run claude-code:shadow -- --backend sidecar   # :3004; or the prompted judge, AGENT_JUDGE_* as above
+```
+
+Telemetry variables can't be set from a repository's settings, so the receiver and the hook go in
+your own `~/.claude/settings.json`:
+
+```json
+{
+  "env": {
+    "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
+    "OTEL_LOGS_EXPORTER": "otlp",
+    "OTEL_METRICS_EXPORTER": "none",
+    "OTEL_EXPORTER_OTLP_PROTOCOL": "http/json",
+    "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://127.0.0.1:3004/v1/logs"
+  },
+  "hooks": {
+    "PreToolUse": [
+      { "matcher": "Bash", "hooks": [{ "type": "http", "url": "http://127.0.0.1:3004/claude-code/pre-tool-use", "timeout": 5 }] }
+    ]
+  }
+}
+```
+
+`OTEL_LOG_TOOL_DETAILS=1` adds `classifier_category`, the rule the classifier cites when it
+blocks. It also puts every tool's parameters in the export, which the receiver drops.
+
+Then work in auto mode sessions as usual. By default only auto mode calls are scored
+(`--all-modes` scores the rest too), and only one at a time, off the hook's clock. If more than 20
+are waiting, a call is logged as dropped instead of scored. Everything goes to
+`~/.xavierjev/shadow/`, command included, and stays on this machine.
+
+```bash
+npm run claude-code:shadow-report                       # the two side by side, by tool_use_id
+npm run claude-code:shadow-report -- --blind            # draw the disagreements to label
+npm run claude-code:label                               # label them at http://127.0.0.1:8778
+npm run claude-code:shadow-report -- --json summary.json  # counts, rates and quantiles only
+```
+
+The report gives a two-by-two of the gate's clear-or-ask against the classifier's allow-or-block,
+counted on calls where both answered. With it come the agreement, an exact interval, Cohen's
+kappa and each side's clear rate. It also gives the gate's time, and the time from the hook
+arriving to the decision event. That second time is an upper bound on the classifier's, since it
+includes the rest of Claude Code's permission check. Scores from a second judge, digest or
+threshold are counted and left out, so a mid-run change is never read as one run.
+
+`--blind` mixes the disagreements with as many calls the two agreed on, half each way. The
+labelling page shows the command, its directory and where a leading `cd` goes. It never shows a
+score, a verdict or which side of a disagreement a call came from. The labels are the gate's
+criterion, read strictly and with a leading `cd` as the working directory. Run the report again
+once every item is labelled, and it says how many in each cell were unsafe.
+
+The two read different things. The classifier sees the conversation a call comes from, and the
+gate sees the command and nothing else. So a disagreement says they differ on that call. It does
+not say which of them is wrong; that is what the labels are for. Calls through the PowerShell
+tool aren't compared at all, because the gate was measured on shell commands and the hook
+matches Bash only. Auto mode doesn't consult its classifier on calls a rule settles, or on some it
+approves by itself, so those calls have no verdict to compare.
+
+Tested: the OTLP parsing, the join, the two-by-two, the blind draw and the label counts, all as
+mock checks. The server was also run against a stand-in judge with hand-sent hooks and exports:
+an empty 200 in 2–3 ms while the judge took 300 ms, only auto mode Bash scored, an e-mail
+attribute and a prompt event dropped, and a foreign `Host` refused. Not run yet: a real auto mode
+session. The Claude Code that ships in the desktop app was still 2.1.299 on 2026-10-19, older
+than the verdict field.
+
 ## Three primitives
 
 A decision model takes state plus declared, typed questions, and returns probabilities
@@ -863,7 +941,7 @@ yes/no did.
 
 ## Status
 
-The mock suite — `npm test`, 73 checks, no model — covers the logic that would otherwise
+The mock suite — `npm test`, 79 checks, no model — covers the logic that would otherwise
 fail quietly: the gate's answers returned in question order and decided on the worst; the
 four ways each of the gate and the router can fail (a backend that throws, times out,
 skips a question, or answers outside [0, 1]) landing on asking and on the strong model; the
@@ -886,7 +964,8 @@ endpoint's answers read back in question order from one request, and its refusal
 answers, answers from another model than the one asked for and its absence landing on asking,
 with anything but a loopback server refused; a timeout in each
 of the four decisions cancelling the judge's request, not only the wait for it, down to the
-sidecar and the decision endpoint seeing their connection dropped; a resumable eval file refusing a second judge; and the bounds
+sidecar and the decision endpoint seeing their connection dropped; a resumable eval file refusing a second judge; the auto mode shadow's export cut down to verdicts and keys, its join on
+`tool_use_id`, its blind draw and its label counts; and the bounds
 `eval/stats.ts` puts beside a count. The sidecar's Python has its own checks,
 `python -m unittest discover -s sidecar`, which CI runs on a CPU build of torch with transformers:
 the threshold counted at the value saved, an adapter file missing a tensor refused, the digest
